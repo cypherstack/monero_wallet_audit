@@ -1,0 +1,142 @@
+Tmonero-serai v0.1.4-alpha (/serai/networks/monero)
+├── curve25519-dalek v4.1.3
+│   ├── cfg-if v1.0.0
+│   ├── cpufeatures v0.2.14
+│   ├── curve25519-dalek-derive v0.1.1 (proc-macro)
+│   │   ├── proc-macro2 v1.0.86
+│   │   │   └── unicode-ident v1.0.13
+│   │   ├── quote v1.0.37
+│   │   │   └── proc-macro2 v1.0.86 (*)
+│   │   └── syn v2.0.79
+│   │       ├── proc-macro2 v1.0.86 (*)
+│   │       ├── quote v1.0.37 (*)
+│   │       └── unicode-ident v1.0.13
+│   ├── digest v0.10.7
+│   │   ├── block-buffer v0.10.4
+│   │   │   └── generic-array v0.14.7
+│   │   │       └── typenum v1.17.0
+│   │   │       [build-dependencies]
+│   │   │       └── version_check v0.9.5
+│   │   └── crypto-common v0.1.6
+│   │       ├── generic-array v0.14.7 (*)
+│   │       └── typenum v1.17.0
+│   ├── group v0.13.0
+│   │   ├── ff v0.13.0
+│   │   │   ├── bitvec v1.0.1
+│   │   │   │   ├── funty v2.0.0
+│   │   │   │   ├── radium v0.7.0
+│   │   │   │   ├── tap v1.0.1
+│   │   │   │   └── wyz v0.5.1
+│   │   │   │       └── tap v1.0.1
+│   │   │   ├── rand_core v0.6.4
+│   │   │   │   └── getrandom v0.2.15
+│   │   │   │       ├── cfg-if v1.0.0
+│   │   │   │       └── libc v0.2.159
+│   │   │   └── subtle v2.6.1
+│   │   ├── rand_core v0.6.4 (*)
+│   │   └── subtle v2.6.1
+│   ├── rand_core v0.6.4 (*)
+│   ├── subtle v2.6.1
+│   └── zeroize v1.8.1
+│       └── zeroize_derive v1.4.2 (proc-macro)
+│           ├── proc-macro2 v1.0.86 (*)
+│           ├── quote v1.0.37 (*)
+│           └── syn v2.0.79 (*)
+│   [build-dependencies]
+│   └── rustc_version v0.4.1
+│       └── semver v1.0.23
+├── hex-literal v0.4.1
+├── monero-borromean v0.1.0 (./ringct/borromean)
+│   ├── curve25519-dalek v4.1.3 (*)
+│   ├── monero-generators v0.4.0 (./generators)
+│   │   ├── curve25519-dalek v4.1.3 (*)
+│   │   ├── dalek-ff-group v0.4.1 (/serai/crypto/dalek-ff-group)
+│   │   │   ├── crypto-bigint v0.5.5
+│   │   │   │   ├── subtle v2.6.1
+│   │   │   │   └── zeroize v1.8.1 (*)
+│   │   │   ├── curve25519-dalek v4.1.3 (*)
+│   │   │   ├── digest v0.10.7 (*)
+│   │   │   ├── ff v0.13.0 (*)
+│   │   │   ├── group v0.13.0 (*)
+│   │   │   ├── rand_core v0.6.4 (*)
+│   │   │   ├── rustversion v1.0.17 (proc-macro)
+│   │   │   ├── subtle v2.6.1
+│   │   │   └── zeroize v1.8.1 (*)
+│   │   ├── group v0.13.0 (*)
+│   │   ├── monero-io v0.1.0 (./io)
+│   │   │   ├── curve25519-dalek v4.1.3 (*)
+│   │   │   └── std-shims v0.1.1 (/serai/common/std-shims)
+│   │   │       ├── hashbrown v0.14.5
+│   │   │       │   └── ahash v0.8.11
+│   │   │       │       ├── cfg-if v1.0.0
+│   │   │       │       ├── once_cell v1.20.2
+│   │   │       │       └── zerocopy v0.7.35
+│   │   │       │       [build-dependencies]
+│   │   │       │       └── version_check v0.9.5
+│   │   │       └── spin v0.9.8
+│   │   ├── sha3 v0.10.8
+│   │   │   ├── digest v0.10.7 (*)
+│   │   │   └── keccak v0.1.5
+│   │   ├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+│   │   └── subtle v2.6.1
+│   ├── monero-io v0.1.0 (./io) (*)
+│   ├── monero-primitives v0.1.0 (./primitives)
+│   │   ├── curve25519-dalek v4.1.3 (*)
+│   │   ├── monero-generators v0.4.0 (./generators) (*)
+│   │   ├── monero-io v0.1.0 (./io) (*)
+│   │   ├── sha3 v0.10.8 (*)
+│   │   ├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+│   │   └── zeroize v1.8.1 (*)
+│   ├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+│   └── zeroize v1.8.1 (*)
+├── monero-bulletproofs v0.1.0 (./ringct/bulletproofs)
+│   ├── curve25519-dalek v4.1.3 (*)
+│   ├── monero-generators v0.4.0 (./generators) (*)
+│   ├── monero-io v0.1.0 (./io) (*)
+│   ├── monero-primitives v0.1.0 (./primitives) (*)
+│   ├── rand_core v0.6.4 (*)
+│   ├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+│   ├── thiserror v1.0.64
+│   │   └── thiserror-impl v1.0.64 (proc-macro)
+│   │       ├── proc-macro2 v1.0.86 (*)
+│   │       ├── quote v1.0.37 (*)
+│   │       └── syn v2.0.79 (*)
+│   └── zeroize v1.8.1 (*)
+│   [build-dependencies]
+│   ├── curve25519-dalek v4.1.3 (*)
+│   └── monero-generators v0.4.0 (./generators) (*)
+├── monero-clsag v0.1.0 (./ringct/clsag)
+│   ├── curve25519-dalek v4.1.3 (*)
+│   ├── monero-generators v0.4.0 (./generators) (*)
+│   ├── monero-io v0.1.0 (./io) (*)
+│   ├── monero-primitives v0.1.0 (./primitives) (*)
+│   ├── rand_core v0.6.4 (*)
+│   ├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+│   ├── subtle v2.6.1
+│   ├── thiserror v1.0.64 (*)
+│   └── zeroize v1.8.1 (*)
+├── monero-generators v0.4.0 (./generators) (*)
+├── monero-io v0.1.0 (./io) (*)
+├── monero-mlsag v0.1.0 (./ringct/mlsag)
+│   ├── curve25519-dalek v4.1.3 (*)
+│   ├── monero-generators v0.4.0 (./generators) (*)
+│   ├── monero-io v0.1.0 (./io) (*)
+│   ├── monero-primitives v0.1.0 (./primitives) (*)
+│   ├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+│   ├── thiserror v1.0.64 (*)
+│   └── zeroize v1.8.1 (*)
+├── monero-primitives v0.1.0 (./primitives) (*)
+├── std-shims v0.1.1 (/serai/common/std-shims) (*)
+└── zeroize v1.8.1 (*)
+[dev-dependencies]
+├── hex v0.4.3
+├── serde v1.0.210
+│   └── serde_derive v1.0.210 (proc-macro)
+│       ├── proc-macro2 v1.0.86 (*)
+│       ├── quote v1.0.37 (*)
+│       └── syn v2.0.79 (*)
+└── serde_json v1.0.128
+    ├── itoa v1.0.11
+    ├── memchr v2.7.4
+    ├── ryu v1.0.18
+    └── serde v1.0.210 (*)

@@ -1,0 +1,128 @@
+%
+% This template provides an in-depth structure for writing a formal protocol specification.
+% It incorporates:
+%  - Extended commentary for each section of a protocol spec
+%  - BibTeX for reference management
+%  - Glossaries and an index for terminology and ease of navigation
+%
+% To compile:
+%  1) pdflatex specs_template.tex
+%  2) bibtex specs_template.aux (depending on your LaTeX environment, or just "bibtex specs_template")
+%  3) makeglossaries specs_template
+%  4) pdflatex specs_template.tex (repeat as needed to resolve references/index)
+%
+%-------------------------------------------------------------------------------------------%
+
+\documentclass[12pt,a4paper]{article}
+
+%-------------------- Package Imports --------------------%
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}               % Improved font rendering
+\usepackage{geometry}              % Page geometry
+\geometry{margin=1in}             % Set margins to your preference
+\usepackage{hyperref}              % Clickable links and refs
+\usepackage{graphicx}              % For images
+\usepackage{enumitem}              % Better control of list environments
+\usepackage{xcolor}                % Color text if needed
+\usepackage{makeidx}               % For creating an index
+\makeindex                         % Initialize index creation
+\usepackage[style=alphabetic]{biblatex} % BibLaTeX for references
+\addbibresource{references.bib}    % External .bib file for references
+\usepackage[toc, acronym]{glossaries}   % Glossaries and acronyms
+\makeglossaries                    % Initialize glossary creation
+
+%-------------------- Example Glossary Entries --------------------%
+\newglossaryentry{protocol}{
+  name={protocol},
+  description={A set of rules and structures governing communication between two or more parties}
+}
+\newglossaryentry{specification}{
+  name={specification},
+  description={A detailed, standardized description of the requirements and behaviors of a system}
+}
+\newglossaryentry{p2p}{
+  name={P2P},
+  description={Peer-to-peer, a decentralized communications model in which each party can act as both client and server}
+}
+
+%-------------------- Title, Author, Date --------------------%
+\title{\textbf{Protocol Specification Template}}
+\author{Your Name \\ \texttt{your.email@domain.com}}
+\date{\today}
+
+%===================== DOCUMENT START =====================%
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\clearpage
+
+%-------------------- Section: Introduction / Scope --------------------%
+\section{Introduction}
+
+This specification defines parts of the Monero protocol. 
+
+\subsection{Scope \& Goals}
+\begin{itemize}[noitemsep]
+  \item \textbf{Purpose}: Summarize the protocol’s objective and the 
+  primary use-cases it covers.
+  \item \textbf{Intended Audience}: Identify who should implement or 
+  reference this specification (e.g., library maintainers, client 
+  developers).
+  \item \textbf{Goals and Non-Goals}: Clearly outline what the protocol 
+  is designed to achieve, and highlight any features explicitly 
+  out-of-scope.
+\end{itemize}
+
+%-------------------- Section: Terminology & Definitions --------------------%
+\section{Notation}
+Provide a clear and consistent notation
+used throughout this specification.
+
+
+\section{Definitions}
+Provide clear and consistent definitions of concepts used throughout this specification.
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Key Terms}: Distinct words or phrases with specific 
+  technical meanings. 
+  \item \textbf{Reference to Glossary}: Ensure each term is cross-referenced 
+  to your \texttt{glossaries} entries or an appendix.
+\end{itemize}
+
+\textit{Example: see the \texttt{glossaries} package for automatically 
+generating a glossary of terms.}
+
+
+%-------------------- Section: Data Structures & Message Formats --------------------%
+\section{Data Structures and Message Formats}
+This section is critical for implementers, as it defines exactly how data 
+is encoded, transmitted, and parsed.
+\begin{itemize}[noitemsep]
+  \item \textbf{Packet / Message Layout}: Describe each field’s purpose, 
+  size, data type, and any relevant constraints.
+  \item \textbf{Encoding and Serialization}: Specify whether the protocol 
+  uses JSON, binary, Protobuf, or a custom encoding. Include examples if 
+  necessary.
+  \item \textbf{Field Ordering and Endianness}: Clearly define how multi-byte 
+  fields are laid out and how they should be read (e.g., big-endian).
+\end{itemize}
+\appendix
+% \section{Appendix: Implementation Examples}
+% Use this appendix to show sample code snippets, additional diagrams, or 
+% test vectors.
+
+\section{Appendix: Glossary and Index Usage}
+Below is a demonstration of how to print a glossary of terms mentioned in 
+this document, as well as an index.
+
+% Print the glossary
+\clearpage
+\printglossary[title=Glossary of Terms]
+
+\clearpage
+\printindex
+
+\end{document}

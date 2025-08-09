@@ -1,0 +1,304 @@
+
+
+% A bunch of glossary entries
+\newglossaryentry{monero-wallet (v0.1.0)}{
+name={\protect\texttt{monero-wallet (v0.1.0)}},
+description={A standard library crate, with the corresponding entry point at  \path{/wallet/src/lib.rs}. Handles all wallet functionality}
+}
+
+    \newglossaryentry{monero-simple-request-rpc (v0.1.0)}{
+        name={\protect\texttt{monero-simple-request-rpc (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at  \path{/rpc/simple-request/src/lib.rs}. Default RPC to avoid external dependences, e.g. reqwest}
+    }
+
+    
+    \newglossaryentry{monero-rpc (v0.1.0)}{
+        name={\protect\texttt{monero-rpc (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/rpc/src/lib.rs}, employing no file or directory modules. Handles RPC calls for interacting on the Monero network.}
+    }
+
+    \newglossaryentry{monero-serai (v0.1.4-alpha)}{
+        name={\protect\texttt{monero-serai (v0.1.4-alpha)}},
+        description={A standard library crate, with the corresponding entry point at \path{/src/lib.rs}. This is the overall transaction library.}
+    }
+
+    \newglossaryentry{monero-address (v0.1.0)}{
+        name={\protect\texttt{monero-address (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/wallet/address/src/lib.rs}. Handles Monero addresses.}
+    }
+
+    \newglossaryentry{monero-borromean (v0.1.0)}{
+        name={\protect\texttt{monero-borromean (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/ringct/borromean/src/lib.rs}. Employs no modules, and untested. Handles Borromean signatures and Borromean range proofs.}
+    }
+
+
+    \newglossaryentry{monero-bulletproofs (v0.1.0)}{
+        name={\protect\texttt{monero-bulletproofs (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/ringct/bulletproofs/src/lib.rs}. Handles original bulletproofs and bulletproofs plus.}
+    }
+
+    \newglossaryentry{monero-clsag (v0.1.0)}{
+        name={\protect\texttt{monero-clsag (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/ringct/clsag/src/lib.rs}. Handles CLSAG ring signatures and a FROST-like thresholdization.}
+    }
+
+
+    \newglossaryentry{monero-mlsag (v0.1.0)}{
+        name={\protect\texttt{monero-mlsag (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/ringct/mlsag/src/lib.rs}. Employs no modules, and untested. Handles MLSAG ring signatures.}
+    }
+
+
+    \newglossaryentry{monero-primitives (v0.1.0)}{
+        name={\protect\texttt{monero-primitives (v0.1.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/primitives/src/lib.rs}.}
+    }
+
+    \newglossaryentry{monero-generators (v0.4.0)}{
+        name={\protect\texttt{monero-generators (v0.4.0)}},
+        description={A standard library crate, with the corresponding entry point at \path{/primitives/src/lib.rs}.  Handles hashing to elliptic curve group elements, and computing fixed generators for use in the Monero protocol}
+    }
+
+    \newglossaryentry{monero-io (v0.1.0)}{
+        name={\protect\texttt{monero-io (v0.1.0)}},
+        description={A standard library crate with entry point at \path{/io/src/lib.rs}. Employs no modules, and untested.  Handles reading and writing various data structures used in Monero protocol computations (e.g.\ bytes, scalars, group elements, lists whose entries are the same type)}
+    }
+    
+    \newglossaryentry{decoys-module}{
+        name={\protect\path{/wallet/src/decoys.rs}},
+        description={The module handling decoys.}
+    }
+
+    \newglossaryentry{extra-module}{
+        name={\protect\path{/wallet/src/extra.rs}},
+        description={The module handling the extra field of transactions.}
+    }
+
+    \newglossaryentry{output-module}{
+        name={\protect\path{/wallet/src/output.rs}},
+        description={The module handling transaction outputs.}
+    }
+
+    \newglossaryentry{scan-module}{
+        name={\protect\path{/wallet/src/scan.rs}},
+        description={The module handling scanning.}
+    }
+
+    \newglossaryentry{view-pair-module}{
+        name={\protect\path{/wallet/src/view_pair.rs}},
+        description={The module handling the (public-spend, private-view) keys.}
+    }
+
+    \newglossaryentry{send-module}{
+        name={\protect\path{/wallet/src/send/mod.rs}},
+        description={The module handling the sending transactions.}
+    }
+
+    \newglossaryentry{block-module}{
+        name={\protect\path{/src/block.rs}},
+        description={The module handling blocks.}
+    }
+
+    \newglossaryentry{merkle-module}{
+        name={\protect\path{/src/merkle.rs}},
+        description={Module for handling Merkle trees}
+    }
+
+    \newglossaryentry{ring-signatures-module}{
+        name={\protect\path{/src/ring_signatures.rs}},
+        description={Module for handling ring signatures}
+    }
+
+    \newglossaryentry{ringct-module}{
+        name={\protect\path{/src/ringct.rs}},
+        description={Module for handling ring confidential transactions}
+    }
+
+    \newglossaryentry{transaction-module}{
+        name={\protect\path{/src/transaction.rs}},
+        description={Module for handling transactions}
+    }
+
+    \newglossaryentry{base58-module}{
+        name={\protect\path{/wallet/address/src/base58check.rs}},
+        description={Module for handling base58 enc/dec}
+    }
+
+    \newglossaryentry{monero-serai-entry-point}{
+        name={\protect\path{/src/lib.rs}},
+        description={Module for handling RPC calls for communicating on the Monero network.}.
+    }
+    
+    \newglossaryentry{wallet-tests}{
+        name={\protect\path{/wallet/src/tests/runner/mod.rs}},
+        description={Testing module for \texttt{monero wallet (v0.1.0)}}
+    }
+
+    \newglossaryentry{wallet-entry-point}{
+        name={\protect\path{/wallet/src/lib.rs}},
+        description={The entry point to the \gls{monero-wallet (v0.1.0)} crate}
+    }
+
+    \newglossaryentry{monero-simple-request-rpc-entry-point}{
+        name={\protect\path{/rpc/simple-request/src/lib.rs}},
+        description={The entry point to the \gls{monero-simple-request-rpc (v0.1.0)} crate}
+    }
+    
+    \newglossaryentry{monero-rpc-entry-point}{
+        name={\protect\path{/rpc/src/lib.rs}},
+        description={Module for handling RPC calls for communicating on the Monero network.}.
+    }
+
+
+    \newglossaryentry{monero-serai-tests}{
+        name={\protect\path{/src/tests/mod.rs}},
+        description={Testing module for handling \gls{monero-serai (v0.1.4-alpha)} tests}
+    }
+
+    \newglossaryentry{address-tests}{
+        name={\protect\path{/wallet/address/src/tests.rs}},
+        description={Testing module for \gls{monero-address (v0.1.0)} tests}
+    }
+
+    
+    \newglossaryentry{borromean-entry-point}{
+        name={\protect\path{/ringct/borromean/src/lib.rs}},
+        description={Entry point to \gls{monero-borromean (v0.1.0)}}
+    }
+
+    
+    \newglossaryentry{bulletproofs-entry-point}{
+        name={\protect\path{/ringct/bulletproofs/src/lib.rs}},
+        description={Entry point to \gls{monero-bulletproofs (v0.1.0)}}
+    }
+
+    
+    \newglossaryentry{bp-batch-verifier-module}{
+        name={\protect\path{/ringct/bulletproofs/src/batch_verifier.rs}},
+        description={Module for handling batch verification of bulletproofs}
+    }
+
+    \newglossaryentry{bp-core-module}{
+        name={\protect\path{/ringct/bulletproofs/src/core.rs}},
+        description={Module for handling the core folding computation of bulletproofs.}
+    }
+
+
+    \newglossaryentry{bp-point-vector-module}{
+        name={\protect\path{/ringct/bulletproofs/src/point_vector.rs}},
+        description={Module for handling the vectors of group elements in bulletproofs.}
+    }
+
+
+    \newglossaryentry{bp-scalar-vector-module}{
+        name={\protect\path{/ringct/bulletproofs/src/scalar_vector.rs}},
+        description={Module for handling the vectors of field elements/scalars in bulletproofs.}
+    }
+
+
+    \newglossaryentry{bp-original-module}{
+        name={\protect\path{/ringct/bulletproofs/src/original/mod.rs}},
+        description={Module for handling the original bulletproofs}
+    }
+
+    \newglossaryentry{bp-plus-module}{
+        name={\protect\path{/ringct/bulletproofs/src/plus/mod.rs}},
+        description={Module for handling bulletproofs plus}
+    }
+
+    \newglossaryentry{bp-test-module}{
+        name={\protect\path{/ringct/bulletproofs/src/plus/mod.rs}},
+        description={Module for handling bulletproofs tests}
+    }
+
+    \newglossaryentry{monero-clsag-entry-point}{
+        name={\protect\path{/ringct/clsag/src/lib.rs}},
+        description={Entry point for \gls{monero-clsag (v0.1.0)}}
+    }
+   
+    \newglossaryentry{clsag-multisig-module}{
+        name={\protect\path{/ringct/clsag/src/multisig.rs}},
+        description={Module for handling CLSAG signatures.}
+    } 
+
+    \newglossaryentry{clsag-tests}{
+        name={\protect\path{/ringct/clsag/src/tests.rs}},
+        description={Test module for CLSAG signatures.}
+    } 
+
+    \newglossaryentry{monero-mlsag-entry-point}{
+        name={\protect\path{/ringct/clsag/src/tests.rs}},
+        description={Entry point for \gls{monero-mlsag (v0.1.0)}}
+    } 
+
+    \newglossaryentry{monero-primitives-entry-point}{
+        name={\protect\path{/primitives/src/lib.rs}},
+        description={Entry point for \gls{monero-primitives (v0.1.0)}}
+    } 
+
+
+    \newglossaryentry{unreduced-scalar-module}{
+        name={\protect\path{/primitives/src/unreduced_scalar.rs}},
+        description={Module for handling unreduced scalars.}
+    } 
+
+
+    \newglossaryentry{monero-primitives-tests}{
+        name={\protect\path{/primitives/src/tests.rs}},
+        description={Testing module for \gls{monero-primitives (v0.1.0)}}
+    } 
+
+    \newglossaryentry{monero-generators-entry-point}{
+        name={\protect\path{/generators/src/lib.rs}},
+        description={Entry point for \gls{monero-generators (v0.4.0)}}
+    } 
+
+    \newglossaryentry{hash-to-point-module}{
+        name={\protect\path{/primitives/src/hash_to_point.rs}},
+        description={Module for handling hashing data to elliptic curve group elements}
+    } 
+    
+    \newglossaryentry{monero-generators-tests}{
+        name={\protect\path{/primitives/src/tests/mod.rs}},
+        description={Testing module for \gls{monero-generators (v0.4.0)}}
+    } 
+
+    \newglossaryentry{monero-io-entry-point}{
+        name={\protect\path{/io/src/lib.rs}},
+        description={Entry point for \gls{monero-io (v0.1.0)}}
+    } 
+    
+    \newglossaryentry{monero-address-entry-point}{
+        name={\protect\path{/wallet/address/src/lib.rs}},
+        description={Entry point for \gls{monero-io (v0.1.0)}}
+    } 
+
+    
+    
+    \newglossaryentry{eventuality-module}{
+        name={\protect\path{/wallet/src/send/eventuality.rs}},
+        description={Module for handling \gls{eventualities}}
+    } 
+    
+    
+    \newglossaryentry{send-multisig-module}{
+        name={\protect\path{/wallet/src/send/multisig.rs}},
+        description={Module for handling multisig transactions}
+    } 
+
+    
+    \newglossaryentry{send-tx-module}{
+        name={\protect\path{/wallet/src/send/tx.rs}},
+        description={Module for handling sending transactions}
+    } 
+    
+    \newglossaryentry{send-tx-keys-module}{
+        name={\protect\path{/wallet/src/send/tx_key.rs}},
+        description={Module for handling keys in sending transactions}
+    } 
+
+    \newglossaryentry{eventualities}{
+        name={Eventualities},
+        description={A struct for handling the eventual output from \gls{SignableTransaction}s.}
+    } 

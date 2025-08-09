@@ -1,0 +1,1665 @@
+\section{Rust Implementation}
+
+In this section, we review the Rust implementation of FROSTLASS \path{/serai-dex/serai/networks/monero/} directory (the ``audit directory'') in commit \texttt{48db06f} by \texttt{KayabaNerve} of the GitHub repository at \url{github.com/serai-dex/serai}
+
+\subsection{Overview}
+
+The audit directory contains a Rust implementation of Monero wallet functionality, together with a new approach to using FROST for threshold signing. All files, folders, and subfolders of 
+\path{/serai-dex/serai/networks/monero/} are in scope for the audit, except not the subfolder \path{/serai-dex/serai/networks/monero/verify-chain/}.
+
+\subsection{General Findings}
+
+This codebase is consistent, neat, clean, and efficient.
+
+\subsection{Repository Structure}
+
+The repository at \url{github.com/serai-dex/serai} is organized into several top-level directories, including \path{/serai-dex/serai/networks/}, which in turn contains \path{/serai-dex/serai/networks/monero/}.  Figure \ref{fig:directory_structure} describes the target directory structure, where asterisks indicate crates (named in parentheses); the only folder not in scope of this audit is \texttt{verify-chain}. 
+
+
+\begin{figure}[ht]
+\centering
+\begin{minipage}{0.9\linewidth}
+\begin{mdframed}
+\begin{verbatim}
+/serai-dex/serai/
+|-- out_of_scope_files
+|-- networks/
+    |-- out_of_scope_files
+    |-- monero*/ (monero-serai)
+        |-- generators*/ (monero-generators)
+        |-- io*/ (monero-io)
+        |-- primitives*/ (monero-primitives)
+        |-- ringct/
+            |-- borromean*/ (monero-borromean)
+            |-- bulletproofs*/ (monero-bulletproofs)
+            |-- clsag*/ (monero-clsag)
+            |-- mlsag*/ (monero-mlsag)
+        |-- rpc*/ (monero-rpc)
+            |-- simple-request*/ (monero-simple-request-rpc)
+        |-- src/
+        |-- tests/
+        |-- verify-chain*/
+        |-- wallet*/ (monero-wallet)
+            |-- address*/ (monero-address)
+\end{verbatim}
+\end{mdframed}
+\end{minipage}
+\caption{Directory structure of the target repository. Everything within \protect\path{/serai-dex/serai/networks/monero} is in scope, except the subfolder \protect\path{/serai-dex/serai/networks/monero/verify-chain/}. Asterisks indicate crates. Crate names are included in parantheses.}
+\label{fig:directory_structure}
+\end{figure}
+
+% \subsection{Crate Dependencies}
+
+In the following, we omit \texttt{/serai-dex/serai/networks/monero/} from directory references for clarity, with the understanding that all directory references use this as a prefix.
+
+The crates are evocatively named by the data they handle, and mutually depend on each other. Crate dependency is not isomorphic to the file structure. 
+Figure \ref{fig:transitive_reduced_dependency_graph} displays these dependencies in the transitive reduction of the directed graph of crate dependencies. Readers should be aware that the transitive reduction of a directed graph $G$ is constructed by removing as many edges as possible without changing the \textit{reachability relation} on pairs of vertices. Thus, not all edges corresponding to direct crate dependency are displayed in Figure \ref{fig:transitive_reduced_dependency_graph}. For example, \texttt{monero-serai} depends directly on \texttt{monero-generators}, \texttt{monero-io}, and \texttt{monero-primitives}.
+In Section \ref{sec:crate_summaries}, we present a look at each crate. 
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+    scale=1, % Ensure proper scaling
+    every node/.style={draw, rectangle, rounded corners, minimum height=1cm, font=\ttfamily, inner sep=5pt, align=center}, % Rectangular nodes
+    edge/.style={-{Latex}, thick}
+]
+
+% Manually normalized coordinates for a 10x7 aspect ratio
+\node (wallet) at (4, 8.5) {wallet};
+\node (simple-request) at (8, 8.5) {simple-request};
+\node (rpc) at (8.25, 6.5) {rpc};
+\node (serai) at (2.5, 5.5) {serai};
+\node (address) at (10, 3.5) {address};
+\node (mlsag) at (8, 3.5) {mlsag};
+\node (clsag) at (6, 3.5) {clsag};
+\node (bulletproofs) at (3.5, 3.5) {bulletproofs};
+\node (borromean) at (0.5, 3.5) {borromean};
+\node (io) at (5, 1) {io};
+\node (generators) at (2, 1) {generators};
+\node (primitives) at (8, 1) {primitives};
+
+% Edges
+\draw[edge] (wallet) -- (rpc);
+\draw[edge] (wallet) -- (address);
+\draw[edge] (wallet) -- (clsag);
+\draw[edge] (wallet) -- (serai);
+\draw[edge] (simple-request) -- (rpc);
+\draw[edge] (rpc) -- (serai);
+\draw[edge] (rpc) -- (address);
+\draw[edge] (serai) -- (borromean);
+\draw[edge] (serai) -- (bulletproofs);
+\draw[edge] (serai) -- (clsag);
+\draw[edge] (serai) -- (mlsag);
+\draw[edge] (address) -- (io);
+\draw[edge] (address) -- (primitives);
+\draw[edge] (borromean) -- (io);
+\draw[edge] (borromean) -- (generators);
+\draw[edge] (borromean) -- (primitives);
+\draw[edge] (bulletproofs) -- (io);
+\draw[edge] (bulletproofs) -- (generators);
+\draw[edge] (bulletproofs) -- (primitives);
+\draw[edge] (clsag) -- (io);
+\draw[edge] (clsag) -- (generators);
+\draw[edge] (clsag) -- (primitives);
+\draw[edge] (mlsag) -- (io);
+\draw[edge] (mlsag) -- (generators);
+\draw[edge] (mlsag) -- (primitives);
+
+\end{tikzpicture}
+\caption{The transitive reduction of the graph of crates and their dependencies. Not all edges corresponding to a direct dependency are displayed in a transitive reduction. For example, \texttt{monero-serai} depends directly on \texttt{monero-generators}, \texttt{monero-io}, and \texttt{monero-primitives}, but these edges are not explicitly displayed.}
+\label{fig:transitive_reduced_dependency_graph}
+\end{figure}
+
+
+\subsection{Functionality}
+
+\subsubsection{Crate Details}\label{sec:crate_summaries}
+
+In this section, we describe each crate name, version, purpose, internal dependencies, and a brief description of crate structure. We use a breadth-first, top-down approach following Figure \ref{fig:transitive_reduced_dependency_graph}. Elements of public APIs (i.e.\ with the modifier \texttt{pub}) have names which are decorated \texttt{thusly}\textsuperscript{\textdagger}, and elements exposed at the crate level (i.e.\ with the modifier \texttt{pub(crate)}) have names which are decorated \texttt{thusly}\textsuperscript{$\Delta$}. We provide links throughout the document to corresponding glossary entries.
+
+% This is the beginning of the giant itemize section in Josh's documentation
+% It's a little tricky because so many pieces are itemized that things seem to deeply nested
+
+\begin{itemize} 
+
+ \item \gls{monero-wallet (v0.1.0)}
+ \begin{itemize}
+ \item Purpose: Handle all wallet functionality.
+ \item Internal Dependencies: 
+ \begin{itemize}
+ \item \gls{monero-address (v0.1.0)}\textsuperscript{\textdagger}
+ \item \gls{monero-clsag (v0.1.0)}\textsuperscript{\textdagger}
+ \item \gls{monero-rpc (v0.1.0)}\textsuperscript{\textdagger}, 
+ \item \gls{monero-serai (v0.1.4-alpha)}\textsuperscript{\textdagger}
+ \end{itemize}
+ \item Structure: A standard library crate, with the corresponding entry point at  \gls{wallet-entry-point}. 
+ 
+ \item Tests at \gls{wallet-tests}.
+ \item The \gls{monero-wallet (v0.1.0)} crate employs the following modules.
+\begin{itemize}
+\item \gls{decoys-module} handles decoy selection with a publicly exposed struct \texttt{OutputWithDecoys}.
+\item \gls{extra-module}\textsuperscript{\textdagger} handles the \texttt{extra} field of a transaction.
+\item \gls{output-module}\textsuperscript{$\Delta$} handles transaction outputs.
+\item \gls{scan-module} handles transaction scanning.
+\item \gls{send-module}\textsuperscript{\textdagger} handles sending transactions. This is a directory module, and contains the following file modules:
+\begin{itemize}
+\item \gls{eventuality-module} handles \gls{eventualities}.
+\item \gls{send-multisig-module} handles sending threshold transactions.
+\item \gls{send-tx-module} handles sending transactions.
+\item \gls{send-tx-keys-module} handles keys for sending transactions.
+\end{itemize}
+\item \gls{view-pair-module} handles pairs of keys, where one is a public spend key, and the other is a private view key.
+\end{itemize}
+
+% Rigo added this
+\end{itemize}
+
+
+ \item \gls{monero-simple-request-rpc (v0.1.0)}
+ \begin{itemize}
+ \item Purpose: Default RPC to avoid external dependencies on, e.g.\ reqwest. Only used in dev dependencies.
+ \item Internal Dependencies: 
+ \begin{itemize}
+ \item \gls{monero-rpc (v0.1.0)}
+ \end{itemize}
+ \item Structure: A standard library crate,  with the corresponding entry point at  \gls{monero-simple-request-rpc-entry-point}.
+\end{itemize}
+ 
+ 
+ \item \gls{monero-rpc (v0.1.0)}
+ \begin{itemize}
+ \item Purpose: handle RPC calls for interacting on the Monero network.
+ \item Internal Dependencies: 
+ \begin{itemize}
+ \item \gls{monero-address (v0.1.0)}  
+ \item \gls{monero-serai (v0.1.4-alpha)}
+ \end{itemize}
+ \item Structure: A standard library crate, with the corresponding entry point at \gls{monero-rpc-entry-point}, employing no file or directory modules.
+ \end{itemize}
+ 
+\item \gls{monero-serai (v0.1.4-alpha)} 
+\begin{itemize}
+\item Purpose: the overall transaction library.
+\item Internal dependencies: 
+\begin{itemize}
+\item \gls{monero-borromean (v0.1.0)}
+\item \gls{monero-bulletproofs (v0.1.0)}
+\item \gls{monero-clsag (v0.1.0)} 
+\item \gls{monero-generators (v0.4.0)}\textsuperscript{\textdagger}
+\item \gls{monero-io (v0.1.0)}\textsuperscript{\textdagger}
+\item \gls{monero-mlsag (v0.1.0)}
+\item \gls{monero-primitives (v0.1.0)}\textsuperscript{\textdagger}
+\end{itemize}
+\item Structure: A standard library crate, with the corresponding entry point at \gls{monero-serai-entry-point}.
+\begin{itemize}
+\item File modules:
+\begin{itemize}
+\item \gls{block-module}\textsuperscript{\textdagger}
+\item \gls{merkle-module}
+\item \gls{ring-signatures-module}\textsuperscript{\textdagger}
+\item \gls{ringct-module}\textsuperscript{\textdagger}
+\item \gls{transaction-module}\textsuperscript{\textdagger}
+\end{itemize}
+\item Tests at \gls{monero-serai-tests}
+\end{itemize}
+
+% Rigo added this
+\end{itemize}
+
+\item \gls{monero-address (v0.1.0)}
+\begin{itemize}
+\item Purpose: handles Monero addresses.
+\item Internal dependencies: 
+\begin{itemize}
+\item \gls{monero-io (v0.1.0)} 
+\item \gls{monero-primitives (v0.1.0)}
+\end{itemize}
+\item Structure: A standard library crate, with the corresponding entry point at \gls{monero-address-entry-point}.
+\begin{itemize}
+\item File module: \gls{base58-module}.
+\item Tests at \gls{address-tests}.
+\end{itemize}
+\end{itemize}
+
+
+
+   \item \gls{monero-borromean (v0.1.0)}
+   \begin{itemize}
+   \item Purpose: Handles Borromean signatures and Borromean range proofs.
+   \item Internal dependencies:
+   \begin{itemize}
+   \item \gls{monero-generators (v0.4.0)}
+   \item \gls{monero-io (v0.1.0)}
+   \item \gls{monero-primitives (v0.1.0)}
+   \end{itemize}
+   \item Structure: A standard library crate, with the corresponding entry point at \gls{borromean-entry-point}. Employs no modules, and untested.
+   \end{itemize}
+   
+   \item \gls{monero-bulletproofs (v0.1.0)}
+   \begin{itemize}
+   \item Purpose: Handles original bulletproofs and bulletproofs plus.
+   \item Internal dependencies:
+   \begin{itemize}
+   \item \gls{monero-generators (v0.4.0)}
+   \item \gls{monero-io (v0.1.0)}
+   \item \gls{monero-primitives (v0.1.0)}
+   \end{itemize}
+   \item Structure: A standard library crate, with the corresponding entry point at \gls{bulletproofs-entry-point}.
+   \begin{itemize}
+   \item File modules:
+   \begin{itemize}
+   \item \gls{bp-batch-verifier-module}\textsuperscript{$\Delta$}
+   \item \gls{bp-core-module}\textsuperscript{$\Delta$}
+   \item \gls{bp-point-vector-module}\textsuperscript{$\Delta$}
+   \item \gls{bp-scalar-vector-module}\textsuperscript{$\Delta$}
+   \end{itemize}
+   \item Directory modules:
+   \begin{itemize}
+   \item \gls{bp-original-module}\textsuperscript{$\Delta$}
+   \item \gls{bp-plus-module}\textsuperscript{$\Delta$}
+   \end{itemize}
+   \item Tests at \gls{bp-test-module}.
+   \end{itemize}
+   \end{itemize}
+
+
+   
+   \item \gls{monero-clsag (v0.1.0)}
+   \begin{itemize}
+   \item Purpose: Handles CLSAG ring signatures and a FROST-like thresholdization.
+   \item Internal dependencies:
+   \begin{itemize}
+   \item \gls{monero-generators (v0.4.0)}
+   \item \gls{monero-io (v0.1.0)}
+   \item \gls{monero-primitives (v0.1.0)}
+   \end{itemize}
+   \item Structure: A standard library crate, with the corresponding entry point at \gls{monero-clsag-entry-point}.
+   \begin{itemize}
+   \item File module: \gls{clsag-multisig-module}.
+   \item Tests: \gls{clsag-tests}
+   \end{itemize}
+   \end{itemize}
+   
+   \item \gls{monero-mlsag (v0.1.0)}
+   \begin{itemize}
+   \item Purpose: Handles MLSAG ring signatures.
+   \item Internal dependencies:
+   \begin{itemize}
+   \item \gls{monero-generators (v0.4.0)}
+   \item \gls{monero-io (v0.1.0)}
+   \item \gls{monero-primitives (v0.1.0)}
+   \end{itemize}
+   \item Structure: A standard library crate with entry point at
+   
+   \gls{monero-mlsag-entry-point}. Employs no modules, and untested.
+   \end{itemize}
+
+
+   
+ \item \gls{monero-primitives (v0.1.0)}
+   \begin{itemize}
+   \item Purpose: Handles Pedersen Commitments and Decoys.
+   \item Internal dependencies:
+   \begin{itemize}
+   \item  \gls{monero-io (v0.1.0)} 
+   \item \gls{monero-generators (v0.4.0)}
+   \end{itemize}
+   \item Structure: A standard library crate with entry point at \gls{monero-primitives-entry-point}. 
+   \begin{itemize}
+   
+   \item File module at \gls{unreduced-scalar-module}.
+   \item Tests at \gls{monero-primitives-tests}.
+   \end{itemize}
+   \end{itemize}
+
+
+ 
+\item \gls{monero-generators (v0.4.0)}
+   \begin{itemize}
+   \item Purpose: Handles hashing data to elliptic curve group elements and all fixed generators used in Monero protocol computations.
+   \item Internally dependent only on \gls{monero-io (v0.1.0)}.
+   \item Structure: A standard library crate with entry point at \gls{monero-generators-entry-point}. 
+   \begin{itemize}
+   
+   \item File module at \gls{hash-to-point-module}. 
+   \item Tests at \gls{monero-generators-tests}
+   \end{itemize}
+   \end{itemize}
+   
+\item \gls{monero-io (v0.1.0)} 
+   \begin{itemize}
+   \item Purpose: Handles reading and writing various data structures used in Monero protocol computations (e.g.\ bytes, scalars, group elements, lists whose entries are the same type).
+   \item No internal dependencies.
+   \item Structure: A standard library crate with entry point at \gls{monero-io-entry-point}. Employs neither modules nor tests.   
+\end{itemize}
+
+% Rigo added this
+\end{itemize}
+
+
+% -------------------------------------------------- %
+% Below is the function section of Josh's documentation
+% -------------------------------------------------- %
+
+% -------------------------------------------------- %
+\subsection{monero-io (v0.1.0)}
+The \gls{monero-io (v0.1.0)} crate implements canonical serialization and deserialization operations.  The following details the supported operations.  
+
+\begin{description}
+\item[VarInt Encoding] The variable-length integer encoding employs a continuation bit scheme.  Each byte uses 7 bits for data, with the most significant bit indicating whether additional bytes follow.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L18 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L60-L72
+The implementation ensures canonical encoding by rejecting unnecessary leading zeros.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L139-L141
+
+\item[Scalar Serialization] Scalars employ a fixed 32-byte encoding in little-endian representation.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L75-L77
+The implementation enforces canonical form by requiring fully reduced values modulo the curve order.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L157-L160
+
+\item[Point Serialization] Points use the compressed Edwards format in 32 bytes.  The Y-coordinate occupies bytes 0-30, while byte 31 stores the X-coordinate sign bit.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L80-L82
+Validation ensures both canonical encoding and proper subgroup membership when requested.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L171-L176 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L188-L193
+
+\item[Integer Types] The implementation supports little-endian encoding of standard widths: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L119-L131
+\begin{itemize}
+\item u16: 2 bytes
+\item u32: 4 bytes  
+\item u64: 8 bytes
+\end{itemize}
+
+\item[Vector Operations] The crate supports two vector serialization formats:
+\begin{itemize}
+\item Raw vectors with consecutive elements % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L85-L94
+\item Length-prefixed vectors using VarInt length encoding % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L97-L104
+\end{itemize}
+\end{description}
+
+The implementation enforces strict canonicalization through validation of:
+\begin{itemize}
+\item VarInt minimal encoding % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L139-L141
+\item Scalar reduction state % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L157-L160
+\item Point coordinate canonical form % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L171-L176
+\item Optional prime-order subgroup membership % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/io/src/lib.rs#L188-L193
+\end{itemize}
+
+
+% -------------------------------------------------- %
+\subsection{monero-generators (v0.1.0)}
+
+The \texttt{hash\_to\_point} function implements Monero's \texttt{hash\_to\_ec} operation to deterministically maps 32 bytes to a point on the Ed25519 curve as in:
+
+\begin{description}
+\item[Input] \hfill 
+
+\begin{itemize}
+\item Takes exactly 32 bytes.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L13
+\end{itemize}
+
+\item[Processing] \hfill 
+
+\begin{enumerate}
+\item Performs Keccak-256 hash of input bytes.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L17 
+\item Squares the hash result and doubles it to get value \texttt{v}.  % "
+\item Computes intermediate values:
+  \begin{itemize}
+  \item \texttt{w = v + 1}.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L18
+  \item \texttt{x = w² - A²v} where A = 486662 (curve parameter).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L15 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L19
+  \item Calculates a partial X coordinate through a series of field operations.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L25-L33
+  \end{itemize}
+\item Derives Y coordinate through:
+  \begin{itemize}
+  \item Calculates \texttt{y = w - x}.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L36
+  \item Sets sign bit based on zero checks.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L37-L39
+  \item Performs field inversions and multiplications to get final Y value.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L41-L48
+  \end{itemize}
+\item Sets the high bit of byte 31 based on calculated sign.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L50
+\end{enumerate}
+
+\item[Output] \hfill 
+
+\begin{itemize}
+\item Returns an EdwardsPoint in compressed 32-byte format:  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L52
+  \begin{itemize}
+  \item Bytes 0-30: Y coordinate.  
+  \item Byte 31: Sign bit of X coordinate in MSB.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L50
+  \end{itemize}
+\item Multiplies result by cofactor (8) to ensure point is in the prime-order subgroup.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L52 (mul_by_cofactor)
+\end{itemize}
+
+\end{description}
+
+The function uses the \texttt{FieldElement} type from dalek-ff-group for constant-time field arithmetic operations over the Ed25519 field of order $2^{255} - 19$.  All operations are performed in constant time as a mitigation against timing-based side-channel attacks.  
+
+\subsubsection{monero-generators Operations}
+
+The \texttt{monero-generators} crate provides generator points for Pedersen commitments and Bulletproofs in Monero as in:
+
+\subsubsection{Core Generator H}
+
+\begin{description}
+\item[Generation] \hfill \\
+The base generator point H is computed as in:
+\begin{enumerate}
+\item Take ED25519\_BASEPOINT\_POINT (the standard Ed25519 base point G).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L10 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L29-L31
+\item Compress it to 32 bytes.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L30
+\item Compute Keccak-256 hash of these bytes.  % "
+\item Map the hash to a curve point using \texttt{hash\_to\_point}.  % "
+\item Multiply by the cofactor (8).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L32
+\end{enumerate}
+
+\item[Powers Table] \hfill \\
+Precomputes powers of H for efficient amount commitments as in:
+\begin{itemize}
+\item Creates array of 64 points $[H, H*2, H*4, ..., H*2^{63}]$. \free{should be exponents?}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L35-L41
+\item Each entry is double the previous entry.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L38
+\item Used for efficient decomposition of u64 amounts.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L42-L48
+\end{itemize}
+\end{description}
+
+\subsubsection{Bulletproofs Generator Vector Creation}
+
+\begin{description}
+\item[Constants] \hfill \\
+\begin{itemize}
+\item MAX\_COMMITMENTS: 16 (maximum provable commitments per range proof).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L51
+\item COMMITMENT\_BITS: 64 (bits per commitment value).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L53
+\item MAX\_MN: MAX\_COMMITMENTS * COMMITMENT\_BITS (total bits in proof).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L72
+\end{itemize}
+
+\item[Generator Creation] \hfill \\
+Takes a domain separation tag (\texttt{dst}) and produces two vectors of points: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L70
+\begin{enumerate}
+\item Create preimage = H.compress() || dst.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L74-L75
+\item For i from 0 to MAX\_MN - 1: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L78-L89
+  \begin{itemize}
+  \item Let j = 2*i.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L80
+  \item H[i] = hash\_to\_point(Keccak256(preimage || varint(j))).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L82-L84
+  \item G[i] = hash\_to\_point(Keccak256(preimage || varint(j+1))).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L86-L88
+  \end{itemize}
+\end{enumerate}
+
+\item[Output] \hfill \\
+Returns \texttt{Generators} struct containing: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L58-L64
+\begin{itemize}
+\item G: Vector of MAX\_MN points for value commitments.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L61
+\item H: Vector of MAX\_MN points for mask commitments.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L63
+\end{itemize}
+\end{description}
+
+All operations maintain constant-time properties through:
+\begin{itemize}
+\item Use of \texttt{LazyLock} for thread-safe lazy initialization.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L6 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L29 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L35
+\item Constant-time point operations from curve25519-dalek.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/lib.rs#L10
+\item Constant-time hash-to-point mapping.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/generators/src/hash_to_point.rs#L1
+\end{itemize}
+
+
+% --------------------------------------------------- %
+\subsection{monero-primitives (v0.1.0)}
+
+\subsubsection{Overview}
+The \texttt{monero-primitives} crate provides the core cryptographic operations required by Monero's protocol.  The crate operates in both \texttt{std} and \texttt{no-std} environments, with certain optimizations available when \texttt{std} is enabled.
+
+
+% ---------- nesting UnreducedScalar, Commitment, Decoys into Core Types
+
+\subsubsection{Core Types}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ UnreducedScalar} 
+A structure representing an unreduced scalar value, primarily used to handle legacy Monero code sections where scalar reduction was not enforced: 
+
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L22-L30 
+
+
+\begin{verbatim}
+pub struct UnreducedScalar(pub [u8; 32]);
+\end{verbatim}
+
+Key operations:
+\begin{itemize}
+  \item \texttt{recover\_monero\_slide\_scalar}: Recovers the scalar that would have been incorrectly interpreted by Monero's \texttt{slide} function due to lack of reduction checks in Borromean range proofs. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L110-L136
+  \item \texttt{non\_adjacent\_form}: Computes the width-5 non-adjacent form (NAF) representation, intentionally matching Monero's potentially incorrect behavior. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L52-L108
+\end{itemize}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Commitment}
+Represents a transparent Pedersen commitment with the following structure: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L80-L88
+
+\begin{verbatim}
+pub struct Commitment {
+    pub mask: Scalar,
+    pub amount: u64
+}
+\end{verbatim}
+
+Operations:
+\begin{itemize}
+  \item \texttt{calculate}: Computes the Pedersen commitment point as $amount \cdot G + mask \cdot H$.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L107-L110
+  \item \texttt{zero}: Creates a commitment to zero using a mask value of 1.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L97-L100
+  \item Serialization and deserialization functionality.
+\end{itemize}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Decoys}
+Manages ring signature data with the structure: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L140-L146
+
+\begin{verbatim}
+pub struct Decoys {
+    offsets: Vec<u64>,
+    signer_index: u8,
+    ring: Vec<[EdwardsPoint; 2]>
+}
+\end{verbatim}
+
+Features:
+\begin{itemize}
+  \item Stores ring member positions as offsets from previous positions.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L184-L192
+  \item Maintains key-commitment pairs for each ring member.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L145
+  \item Provides access to the signer's position and ring members. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L194-L207
+\end{itemize}
+
+\subsubsection{Core Operations}
+
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Hash Operations}
+\begin{itemize}
+  \item \texttt{keccak256}: Computes Keccak-256 hash of input data.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L62-L65
+  \item \texttt{keccak256\_to\_scalar}: Maps input to a scalar via $keccak256(\text{data}) \bmod l$, where $l$ is Ed25519's prime order. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L67-L78
+\end{itemize}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Cached Computations}
+When the \texttt{std} feature is enabled:
+\begin{itemize}
+  \item \texttt{INV\_EIGHT}: Caches $8^{-1} \bmod l$.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L29-L44
+  \item \texttt{G\_PRECOMP}: Maintains precomputed tables for the Ed25519 base point. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L46-L60
+\end{itemize}
+
+\subsubsection{Implementation Details}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ NAF Implementation}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L52-L105
+\begin{itemize}
+  \item Non-constant time operation, explicitly matching Monero's implementation.  % Documented at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L57
+  \item Window size is fixed at 5 bits.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L69
+  \item Edge cases:
+    \begin{itemize}
+      \item Handles overflow beyond 256 bits by truncating.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L70-L74
+      \item Uses special carry propagation when the sum exceeds 15 or the difference goes below -15.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L78-L101
+      \item Matches Monero's behavior even when cryptographically suboptimal.% 
+    \end{itemize}
+\end{itemize}
+
+The NAF computation in \texttt{non\_adjacent\_form} follows these steps:
+\begin{enumerate}
+  \item Convert input to a bit array.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L43-L50
+  \item Process bits sequentially.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L61-L63
+  \item For each non-zero bit: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L66-L104
+    \begin{itemize}
+      \item Examine the next 5 bits (window).  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L69-L74
+      \item Combine bits when sum $\leq 15$ or difference $\geq -15$.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L79-L84
+      \item Handle carry propagation.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L91-L98
+    \end{itemize}
+\end{enumerate}
+
+This intentionally matches Monero's implementation, including specific edge cases.
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Scalar Recovery}
+The \texttt{recover\_monero\_slide\_scalar} function:
+\begin{itemize}
+  \item Returns direct reduction if the high bit is not set.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L119-L124
+  \item Otherwise reconstructs the scalar from its NAF representation.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L127-L134
+  \item Uses precomputed odd scalars for efficiency.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L13-L20
+\end{itemize}
+
+\subsubsection{Security Considerations}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Critical Assumptions}
+\begin{itemize}
+  \item A zero hash result in \texttt{keccak256\_to\_scalar} causes a panic.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L76
+  \item \texttt{UnreducedScalar} operations do not guarantee constant-time execution.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L55-L60
+  \item Commitment masking relies on the discrete logarithm assumption in the Ed25519 group.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L80-L88
+\end{itemize}
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ Implementation Notes}
+\begin{itemize}
+  \item \textbf{Serialization}:
+    \begin{itemize}
+      \item Uses custom formats, distinct from Monero protocol standards.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L112-L137 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L209-L248
+      \item Provides no backwards compatibility guarantees.  % 
+      \item Limits \texttt{Decoys} serialization to Edwards points only.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L216-L223
+    \end{itemize}
+  \item \textbf{Memory Safety}:
+    \begin{itemize}
+      \item Implements \texttt{Zeroize} and \texttt{ZeroizeOnDrop} for sensitive data.  % eg. https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L82
+      \item Performs careful bounds checking on ring operations. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/lib.rs#L165-L167
+    \end{itemize}
+  \item \textbf{Compatibility Choices}:
+    \begin{itemize}
+      \item Matches Monero behavior even when suboptimal.  % Documented at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L52-L57
+      \item Preserves specific edge cases for protocol compatibility.  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L119-L124
+      \item Retains variable-time operations where Monero uses them. % Documented at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/primitives/src/unreduced_scalar.rs#L52-L57
+    \end{itemize}
+\end{itemize}
+
+\begin{itemize}
+  \item Implements \texttt{Zeroize} and \texttt{ZeroizeOnDrop} for sensitive data.
+  \item Matches Monero's behavior for compatibility, even if suboptimal.
+  \item Employs crate-specific serialization formats, not the Monero protocol standard.
+\end{itemize}
+
+
+% --------------------------------------------- %
+\subsection{monero-rpc (v0.1.0)}
+\label{sec:monero-rpc-crate}
+
+The \texttt{monero-rpc} crate provides abstractions for
+communicating with a Monero daemon, retrieving various data (blocks, transactions,
+fee estimates, \emph{etc.}), and publishing transactions.  The crate relies on data
+structures from \texttt{monero-serai}, using them to parse and serialize Monero
+primitives (such as transactions and blocks).  It offers a specialized trait for
+decoy selection.
+
+\subsubsection{Overview}
+\label{sec:monero-rpc-overview}
+
+The \texttt{monero-rpc} crate defines:
+
+\begin{enumerate}
+    \item \textbf{\texttt{RpcError}}: An enumeration capturing errors that may
+    arise when performing RPC calls (see
+    \S\ref{sec:monero-rpc-rpcerror}). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L44-L74
+
+    \item \textbf{\texttt{Rpc} trait}: The primary abstraction for interacting
+    with a Monero daemon.  It defines a set of asynchronous methods for
+    retrieving blocks, transactions, and other chain data, as well as
+    publishing transactions (see \S\ref{sec:monero-rpc-rpc-trait}). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L244-L252
+
+    \item \textbf{\texttt{DecoyRpc} trait}: A higher-level trait extending the
+    concept of retrieving outputs for constructing ring signatures (see
+    \S\ref{sec:monero-rpc-decoy-rpc}). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L1001-L1028 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L1049-L1269
+
+    \item \textbf{Various helpers and supporting items}, such as:
+    \begin{itemize}
+      \item \texttt{ScannableBlock}, bundling a \emph{Monero} block together
+      with its non-miner transactions (in pruned form), plus metadata used when
+      scanning outputs. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L76-L87
+      \item \texttt{FeeRate} and \texttt{FeePriority}, providing abstractions
+      for Monero fee estimation. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L76-L87
+      \item Utility functions to parse certain specialized binary responses from
+      a node, such as \texttt{get\_o\_indexes.bin}. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L812-L999
+    \end{itemize}
+\end{enumerate}
+
+Implementors of \texttt{Rpc} are expected to supply the low-level HTTP or
+transport logic, including authentication if applicable.  The actual requests and
+responses are shaped to match Monero’s JSON-RPC and specialized “binary”
+endpoints.  This allows various backends (e.g., over Tor/i2p, local node,
+dedicated HTTP crates) to be slotted in.
+
+\subsubsection{\texttt{RpcError} Enumeration}
+\label{sec:monero-rpc-rpcerror}
+
+The \texttt{RpcError} enum defines all error conditions encountered by the RPC
+layer: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L43-L74
+
+\begin{itemize}
+    \item \textbf{\texttt{InternalError(String)}} --- Typically signals some
+    logical problem unrelated to standard node replies (for instance,
+    constructing a request with out-of-range parameters).
+
+    \item \textbf{\texttt{ConnectionError(String)}} --- Indicates an inability
+    to reach or properly communicate with the daemon (e.g.\ timeouts, malformed
+    responses, or connectivity disruptions).
+
+    \item \textbf{\texttt{InvalidNode(String)}} --- The remote node returned
+    data not conforming to the Monero protocol, or otherwise gave impossible or
+    contradictory information (suspecting a malicious or misconfigured node).
+
+    \item \textbf{\texttt{TransactionsNotFound(Vec<[u8; 32]>)}} --- One or more
+    requested transactions could not be retrieved by the node.
+
+    \item \textbf{\texttt{PrunedTransaction}} --- A transaction was retrieved in
+    a pruned form when unpruned data was required.  In the current code, pruned
+    transactions are not considered usable for certain operations.
+
+    \item \textbf{\texttt{InvalidTransaction([u8; 32])}} --- The node claims a
+    transaction is valid, but it fails local parsing or verification.
+
+    \item \textbf{\texttt{InvalidFee}} --- The fee returned by the node was
+    nonsensical or out-of-range for safe usage.
+
+    \item \textbf{\texttt{InvalidPriority}} --- The given fee priority could not
+    be honored or mapped (e.g.\ out of the valid \texttt{1--4} range for
+    Monero's known fee multipliers).
+\end{itemize}
+
+Such typed error handling allows the upper layers or other consumers of the
+\texttt{monero-rpc} crate to correctly distinguish user-facing issues (like
+\texttt{TransactionsNotFound}) from transport or malicious-node issues
+(\texttt{ConnectionError} or \texttt{InvalidNode}).
+
+\subsubsection{\texttt{Rpc} Trait}
+\label{sec:monero-rpc-rpc-trait}
+
+The \texttt{Rpc} trait is the centerpiece of the crate, defining the primary
+asynchronous calls for interacting with a Monero daemon.  Its methods can be
+broken into three categories: \emph{primitive calls}, \emph{block/transaction
+retrieval}, and \emph{transaction publishing}. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L244-L999
+
+\subsubsection{\texttt{post}}
+\label{sec:monero-rpc-rpc-trait-post}
+
+\begin{verbatim}
+fn post(
+    &self,
+    route: &str,
+    body: Vec<u8>
+) -> impl Future<Output = Result<Vec<u8>, RpcError>> + Send;
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L253-L260
+
+At the lowest level, \texttt{post} takes an HTTP route string (e.g.:
+\texttt{"get\_transactions"}) and a raw byte vector containing the request body.
+It returns a future resolving to a \texttt{Result} with the raw byte vector for
+the response (or an error).  Implementors must handle:
+
+\begin{itemize}
+    \item HTTP or HTTPS connections.
+    \item Digest or basic authentication.
+    \item Connection pooling or caching.
+\end{itemize}
+
+Nothing in \texttt{monero-rpc} enforces a particular method of connection;
+\texttt{post} abstracts this detail away.
+
+\subsubsection{\texttt{rpc\_call} and \texttt{json\_rpc\_call}}
+\label{sec:monero-rpc-rpc-trait-jsonrpc}
+
+\begin{verbatim}
+fn rpc_call<Params: Serialize + Debug,
+            Response: DeserializeOwned + Debug>(
+    &self,
+    route: &str,
+    params: Option<Params>
+) -> impl Future<Output = Result<Response, RpcError>> + Send;
+
+fn json_rpc_call<Response: DeserializeOwned + Debug>(
+    &self,
+    method: &str,
+    params: Option<Value>
+) -> impl Future<Output = Result<Response, RpcError>> + Send;
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L262-L287 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L289-L302
+
+These two methods use \texttt{post} internally, providing:
+
+\begin{enumerate}
+    \item \texttt{rpc\_call}: For “raw” RPC calls, typically when a daemon
+    endpoint does not follow the JSON-RPC 2.0 standard but instead uses
+    POST-based JSON data (for example, \texttt{get\_transactions}).
+
+    \item \texttt{json\_rpc\_call}: For endpoints explicitly requiring
+    \texttt{json\_rpc} protocol usage (e.g. \\\texttt{get\_block\_header\_by\_height}).
+    The parameters and method name are placed into the JSON-RPC structure, sent,
+    and the result is deserialized back to a typed \texttt{Response}.
+\end{enumerate}
+
+Both automatically handle JSON deserialization into strongly typed Rust
+structures.  If the response is malformed or the node returns an error-like
+structure, \texttt{RpcError::InvalidNode} or \texttt{RpcError::ConnectionError}
+may be produced.
+
+\subsubsection{\texttt{get\_height}, \texttt{get\_transactions}, and Block-Related Methods}
+\rigo{not sure why Block-Related Methods is a different font. Is it a function? Because then it can be the same font}
+
+The crate includes convenience methods for:
+\begin{itemize}
+    \item \texttt{get\_height()}: Returns the current chain height (the number
+    of blocks, with the genesis block counted as height 1). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L338-L354
+    \item \texttt{get\_block}, \texttt{get\_block\_by\_number}, and
+    \texttt{get\_block\_hash}: Retrieve and verify specific blocks, either by
+    zero-indexed block number or by 32-byte hash.  The code ensures the block’s
+    serialized hash matches the node’s reported identifier, guarding against
+    untrusted or corrupted data. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L504-L584
+    \item \texttt{get\_transactions} and \texttt{get\_pruned\_transactions}: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L483
+    Fetch zero or more transactions by their 32-byte hash, verifying they match
+    local expectations (checking the computed transaction hash).  Pruned or
+    unpruned forms are selectively parsed via the relevant entry point.
+    \item \texttt{get\_transaction} (unpruned) and
+    \texttt{get\_pruned\_transaction}: Single-transaction convenience wrappers. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L485-L494
+\end{itemize}
+
+Block retrieval can optionally return a \texttt{ScannableBlock}, packaging a
+\texttt{Block} and its pruned non-coinbase transactions, allowing scanning for
+RingCT outputs. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L586-L655
+
+\subsubsection{\texttt{publish\_transaction}}
+\label{sec:monero-rpc-rpc-trait-publish}
+
+\begin{verbatim}
+fn publish_transaction(
+    &self,
+    tx: &Transaction
+) -> impl Future<Output = Result<(), RpcError>> + Send;
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L742-L777
+
+Publishes a \texttt{Transaction} to the network.  It leverages the
+\texttt{send\_raw\_transaction} route (or equivalent) on the Monero daemon.  
+Should the daemon reject the transaction (for instance, if it conflicts with a
+recently seen double spend), an appropriate \texttt{RpcError} is returned.
+
+\subsubsection{\texttt{get\_fee\_rate}}
+\label{sec:monero-rpc-rpc-trait-fee-estimate}
+
+\begin{verbatim}
+fn get_fee_rate(
+    &self,
+    priority: FeePriority
+) -> impl Future<Output = Result<FeeRate, RpcError>> + Send;
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L675-L740
+
+Requests fee estimates for a particular \texttt{FeePriority} (one of
+\texttt{Unimportant}, \texttt{Normal}, \texttt{Elevated}, \texttt{Priority}, or
+\texttt{Custom}).  Internally, it interprets the JSON response to obtain the fee
+in “per-weight” units and a quantization mask.  The resulting \texttt{FeeRate}
+structure:
+
+\begin{itemize}
+    \item \texttt{per\_weight}: The base fee per weight unit.
+    \item \texttt{mask}: A mask used to round the final transaction fee upward.
+\end{itemize}
+
+The consumer can compute the final fee for a transaction based on the
+transaction weight and this \texttt{FeeRate}.  If an unrecognized or invalid
+priority is requested, \texttt{RpcError::InvalidPriority} is raised.
+
+\subsubsection{\texttt{generate\_blocks}}
+\label{sec:monero-rpc-rpc-trait-generate-blocks}
+
+While not part of a typical production Monero daemon (where block generation is
+not done via RPC in mainnet environments), \texttt{generate\_blocks} is useful
+in a local testing context (e.g.\ in a private regtest setup).  It creates
+blocks, awarding the block reward to the specified \texttt{Address}.
+
+\begin{verbatim}
+fn generate_blocks<const ADDR_BYTES: u128>(
+    &self,
+    address: &Address<ADDR_BYTES>,
+    block_count: usize
+) -> impl Future<Output = Result<(Vec<[u8; 32]>, usize), RpcError>> + Send;
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L779-L810
+
+This returns a list of the newly mined blocks’ hashes and the resulting height.
+
+\subsubsection{\texttt{DecoyRpc} Trait}
+\label{sec:monero-rpc-decoy-rpc}
+
+The \texttt{DecoyRpc} trait extends the base RPC for selecting decoy outputs.  
+When constructing Monero transactions, ring signatures typically reference
+random “decoy” outputs on-chain, enabling privacy.  \texttt{DecoyRpc} adds
+specialized queries for zero-amount RingCT outputs:
+
+\begin{itemize}
+    \item \texttt{get\_output\_distribution\_end\_height()}: Reports the maximum
+    block index used in the distribution.  Typically this equals the chain
+    height. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L1007-L1013
+    \item \texttt{get\_output\_distribution(range: Range<usize>)}: Returns a
+    vector of cumulative output counts for that block range.  By focusing on
+    zero-amount outputs, it leverages the \texttt{get\_output\_distribution}
+    endpoint. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L1015-L1022
+    \item \texttt{get\_outs(indexes: \&[u64])}: Fetches details for a batch of
+    RingCT outputs, including the block height, unlocking status, compressed key
+    (\texttt{C\_i}), and the commitment (\texttt{mask}). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L1024-L1028
+    \item \texttt{get\_unlocked\_outputs(indexes, height, fingerprintable)}:
+    Returns the subset of outputs that are actually unlocked by the node’s
+    current chain state, or by a purely deterministic check (when
+    \texttt{fingerprintable\_deterministic} is true).  This helps ensure
+    decoys represent valid, spendable outputs from the node’s perspective. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L1030-L1046
+\end{itemize}
+
+In typical usage, one might maintain a local database of zero-amount outputs
+(built incrementally), but \texttt{DecoyRpc} allows direct on-demand retrieval
+from a node if required.  Implementing \texttt{DecoyRpc} on top of \texttt{Rpc}
+is straightforward, as the crate includes a default blanket implementation for
+any type satisfying \texttt{Rpc}.
+
+\subsubsection{Supporting Types and Structures}
+\label{sec:monero-rpc-supporting-types}
+
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ \texttt{ScannableBlock}}
+\label{sec:monero-rpc-supporting-types-scannableblock}
+
+\begin{verbatim}
+pub struct ScannableBlock {
+    pub block: Block,
+    pub transactions: Vec<Transaction<Pruned>>,
+    pub output_index_for_first_ringct_output: Option<u64>,
+}
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L76-L87
+
+\texttt{ScannableBlock} encapsulates a fully read, unpruned coinbase
+(\textit{miner}) transaction plus the pruned forms of other transactions, along
+with an optional \texttt{output\_index\_for\_first\_ringct\_output}.  This index
+helps to avoid repeated queries for the output index of every single
+RingCT output in the block, which can be a privacy leak.
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ \texttt{FeeRate}}
+\label{sec:monero-rpc-supporting-types-feerate}
+
+\begin{verbatim}
+pub struct FeeRate {
+    per_weight: u64,
+    mask: u64,
+}
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L89-L152
+
+This data structure is an interpreted result from the node’s fee estimate.  
+The 
+
+\texttt{FeeRate::calculate\_fee\_from\_weight} method performs final rounding:
+\[
+\text{fee} = \left\lceil \frac{\text{per\_weight}
+             \times \text{tx\_weight}}{\text{mask}} \right\rceil
+             \times \text{mask}.
+\]
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L138-L151
+
+
+% Replacing the subsubsection function with the paragraph function
+\subsubsubsection{ \texttt{FeePriority}}
+\label{sec:monero-rpc-supporting-types-feepriority}
+
+\begin{verbatim}
+pub enum FeePriority {
+    Unimportant,
+    Normal,
+    Elevated,
+    Priority,
+    Custom { priority: u32 },
+}
+\end{verbatim}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L154-L173
+
+Monero typically recognizes four distinct priority levels: “unimportant,”
+“normal,” “elevated,” and “priority.”  Each internally maps to a numeric
+multiplier for the base fee.  The \texttt{Custom} variant allows direct numeric
+control, though the node might reject unknown or extreme values.
+
+\subsubsection{Security Considerations}
+\label{sec:monero-rpc-security}
+
+\begin{enumerate}
+    \item \textbf{Node Trust and Validation}: Since
+    \texttt{monero-rpc} can operate on untrusted nodes, it attempts some
+    validation (for example, verifying that a transaction’s hash matches the
+    requested hash).  However, in general, the node is relied upon for essential
+    data about chain state.  The \texttt{InvalidNode} error signals a mismatch
+    from protocol expectations.
+    % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/src/lib.rs#L418-L428 for example.
+    
+    \item \textbf{Confidentiality of Queries}: Repeatedly querying the node
+    about certain output indexes or unconfirmed transactions can leak usage
+    patterns.  Future or external solutions may integrate local caches or batch
+    requests to reduce fingerprinting.
+    
+    \item \textbf{Pruned Transactions}: If the node can only supply pruned
+    data for certain legacy or low-mixin transactions, the library raises
+    \texttt{RpcError::PrunedTransaction} if unpruned data is strictly required.  
+    Users must ensure they only proceed when they can meaningfully handle a
+    pruned transaction (e.g.\ scanning coinbase outputs).
+\end{enumerate}
+
+\subsubsection{Summary of the \texttt{monero-rpc} Crate}
+\label{sec:monero-rpc-conclusion}
+
+The \texttt{monero-rpc} crate provides a clear, typed interface for interacting
+with Monero daemons, either trusted or untrusted.  By defining the \texttt{Rpc}
+trait, it ensures a uniform approach to retrieving, verifying, and publishing
+transactions, while the \texttt{DecoyRpc} trait extends it to fetch random ring
+outputs in a convenient, standardized manner.  This design integrates into
+higher layers of the \texttt{monero-serai} stack, making it easy to develop new
+functionality (e.g.\ bridging, multi-signature orchestrations, or custom
+wallets) in a modular and verifiable way.
+
+
+% ----------------------------------------------------%
+\subsection{monero-bulletproofs (v0.1.0)}
+\label{sec:monero-bulletproofs-impl}
+
+The \texttt{monero-bulletproofs} crate implements both the original Bulletproofs range proof scheme and the newer Bulletproofs+ scheme for the Monero protocol.  The library is located within the Serai repository under \texttt{\small networks/monero/ringct/bulletproofs}.  Its purpose is to generate and verify range proofs over amounts in confidential transactions, ensuring that the amounts are in a valid range (specifically $[0, 2^{64})$) without revealing the amounts themselves.  Below is an overview of its structure, methods, and verification flow, referencing the relevant source files.
+
+\subsubsection{Structure and Entry Points}
+The crate exposes its main functionality via:
+\begin{itemize}
+    \item \texttt{Bulletproof}: An enum representing either the original Bulletproof or a Bulletproof+ proof. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/lib.rs#L59-L69
+    \item \texttt{prove} and \texttt{prove\_plus}: Functions that construct the respective Bulletproof or Bulletproof+ proofs for a list of commitments. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/lib.rs#L108-L146
+    \item \texttt{verify} and \texttt{batch\_verify}: Functions that verify these proofs, either in a standalone or batched manner. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/lib.rs#L148-L173
+\end{itemize}
+
+Internally, the crate is separated into several modules:
+\begin{itemize}
+    \item \texttt{core}: Provides low-level operations such as multi-exponentiation routines and challenge product computation.  
+    \item \texttt{batch\_verifier}: Holds accumulators that enable batching multiple Bulletproof or Bulletproof+ verifications into a single multi-exponentiation.  
+    \item \texttt{original}: Implements the original Bulletproofs approach, including the inner-product proof (\texttt{IpProof}) used by \texttt{AggregateRangeProof}.  
+    \item \texttt{plus}: Implements Bulletproofs+ as described by the Monero project.  It includes the improved weighted inner product proof (\texttt{WipProof}) and the aggregated range proof mechanism that uses it.  
+    \item \texttt{scalar\_vector} and \texttt{point\_vector}: Utility types for vectors of \texttt{Scalar} and \texttt{EdwardsPoint}, offering safe indexing and algebraic operations.  
+    \item \texttt{tests}: Internal tests that validate correctness across both schemes, employing batched and single verifications.  
+\end{itemize}
+
+\subsubsection{Range Proof Representation}
+The top-level enum \texttt{Bulletproof} is:
+\begin{itemize}
+    \item \texttt{Original(OriginalProof)}: The classic Bulletproof structure using the original protocol design.  
+    \item \texttt{Plus(PlusProof)}: The Bulletproof+ structure, notably smaller and with a slightly different internal proving mechanism.  
+\end{itemize}
+
+Each structure internally contains the group elements and scalars required for proof verification.  For instance, \texttt{OriginalProof} holds:
+\begin{itemize}
+    \item \texttt{(A, S, T1, T2)}: Points used in the range proof polynomial commitment.  
+    \item \texttt{tau\_x, mu, t\_hat}: Challenge-related scalars for the polynomial identity check.  
+    \item \texttt{ip}: An \texttt{IpProof} implementing the inner product argument.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L29-L39
+
+Likewise, \texttt{PlusProof} holds:
+\begin{itemize}
+    \item \texttt{A}: The aggregated vector commitment.  
+    \item \texttt{wip (WipProof)}: A specialized weighted inner product proof, the core cryptographic novelty of Bulletproofs+.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/aggregate_range_proof.rs#L41-L47
+
+\subsubsection{Aggregated Range Proof Generation}
+Both Bulletproof and Bulletproof+ provide \emph{aggregated} proofs that combine multiple range proofs for multiple outputs into a single proof whose size grows only logarithmically in the number of outputs.  Each scheme follows a ``commit-and-challenge'' approach similar to standard Bulletproof protocols, but they differ in their choice of transcript hashing and the particular steps for the inner product argument.  
+
+\paragraph{Original Bulletproof (\texttt{original} module)}
+The original code is in \texttt{original/mod.rs} and \\
+\texttt{original/inner\_product.rs}, closely mirroring the \textit{Bulletproofs} paper.  Key steps:
+\begin{enumerate}
+    \item \emph{Precomputation:} Generators \texttt{G} and \texttt{H} are allocated, one for each bit of each commitment.  The maximum number of commitments is specified by \texttt{MAX\_COMMITMENTS}. % MAX_COMMITMENTS imported at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L9 and generators at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L17 (generators generated in https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/build.rs)
+    \item \emph{Polynomial Commitments:} The protocol encodes bits of the amounts in vectors $(a_L, a_R)$, from which it forms commitments $(A, S)$. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L120-L166
+    \item \emph{Challenges:} The code uses Keccak-256 (converted to a \texttt{Scalar} via \texttt{keccak256\_to\_scalar}) to derive random challenges $y, z, x$. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L65-L82 transcript_A_S for y,z challenges, transcript_T12 for x challenge
+    \item \emph{Constrained Polynomial Identity:} The aggregator constructs $(T_1, T_2)$ to bind the polynomial terms, and merges everything with the challenge $x$ to produce $t_{\hat{}}$, $\tau_x$, and $\mu$. %
+    \item \emph{Inner Product Proof:} The \texttt{IpProof} is generated by recursively splitting vectors in half and committing to partial inner products, storing the commitments $(L_i, R_i)$. % See https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L184-L222 for T1 and T2 commitments, transcript/challenge x, t_hat, tau_x, and mu.
+\end{enumerate}
+
+|paragraph{Bulletproof+ (\texttt{plus} module)}
+Bulletproof+ is provided by the \texttt{plus/} folder, primarily in \texttt{weighted\_inner\_product.rs} and \texttt{aggregate\_range\_proof.rs}.  The official Monero code slightly alters the structure of the proof to reduce proof size, while still maintaining logarithmic size.  Notable elements:
+\begin{enumerate}
+    \item The \emph{Weighted Inner Product} (\texttt{WipStatement}) generalizes the classic inner product.  It incorporates certain transformations by weighting vectors with powers of $y$ and rearranging final group elements. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/weighted_inner_product.rs#L15-L28
+    \item The \emph{Generators} are re-labeled for Monero's usage: \texttt{g\_bold} and \texttt{h\_bold} in code, though the actual roles are reversed (Monero uses $H$ as the value basepoint and $G$ for mask derivation). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/mod.rs#L25-L35
+    \item Aggregation is performed similarly with powers of $z$ and $y$, but the final step uses a more efficient \texttt{WipProof}.  
+    \item The function \texttt{prove\_plus} sets up the aggregated statement, computes an $A$ commitment, then calls \texttt{WipStatement::prove} to produce the final weighted inner product proof. % See https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/aggregate_range_proof.rs#L186-L203 for z powers and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/aggregate_range_proof.rs#L213-L234 for y powers and aggregation.
+\end{enumerate}
+
+At verification time, \texttt{aggregate\_range\_proof.rs} re-derives the same hashed challenges from the set of commitments and checks consistency with the \texttt{WipProof}.  As with the original proof, a batched approach merges all terms into a single multi-scalar multiplication check.  
+
+\subsubsection{Core Routines and Utilities}
+
+\paragraph{\texttt{core/mod.rs}}
+Contains low-level primitives:
+\begin{itemize}
+    \item \texttt{multiexp} and \texttt{multiexp\_vartime}: Perform (variable-time) multi-exponentiation to accumulate the proof checks. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/core.rs#L31-L74
+    \item \texttt{challenge\_products}: Generates the partial products of the challenges $(e_i, e_i^{-1})$ for the recursive proof steps, optimizing repeated multiplications. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/core.rs#L50-L74
+\end{itemize}
+
+These functions are the primary means of combining scalar-point pairs for cryptographic checks throughout the library.  
+
+\paragraph{\texttt{batch\_verifier.rs}}
+Implements the \texttt{BatchVerifier} structure, storing:
+\begin{itemize}
+    \item \texttt{original}: An accumulator for the original Bulletproof scheme. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/batch_verifier.rs#L55-L62
+    \item \texttt{plus}: An accumulator for Bulletproof+. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/batch_verifier.rs#L64-L73
+\end{itemize}
+
+Each accumulator collects scalar multipliers for fixed and variable basepoints (respectively \texttt{G}, \texttt{H}, per-commitment bases, etc.).  Finally, \texttt{verify} executes a \emph{single} call to \texttt{vartime\_multiscalar\_mul} to confirm all queued proofs in batch.  
+
+\paragraph{\texttt{scalar\_vector.rs} and \texttt{point\_vector.rs}}
+Define lightweight wrappers around \texttt{Vec<Scalar>} and \texttt{Vec<EdwardsPoint>} to simplify:
+\begin{itemize}
+    \item Indexing with bounds checks (in debug mode). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/scalar_vector.rs#L16-L26
+    \item Element-wise operations: addition, subtraction, or multiplication on each vector element. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/scalar_vector.rs#L28-L85
+    \item Inner product computation: a straightforward $(\mathbf{a},\mathbf{b}) \mapsto \sum a_i b_i$. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/scalar_vector.rs#L124-L130
+\end{itemize}
+
+These wrappers help maintain correctness by preventing mistakes in indexing or length mismatches between vectors.  
+
+\subsubsection{Transcript and Fiat--Shamir Challenges}
+Throughout the protocol, challenges ($y, z, x, \dots$) are computed by hashing various group elements and scalars with Keccak-256.  This is done via:
+\begin{itemize}
+    \item \texttt{keccak256\_to\_scalar(...)}: Converts a Keccak-256 hash into a \texttt{Scalar}. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/transcript.rs#L13-L17
+    \item Combined with domain separators and partial transcripts (e.g.\ $\texttt{A}$, $\texttt{S}$, $\texttt{T1}$, $\texttt{T2}$ in the original scheme). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/transcript.rs#L8-L11
+\end{itemize}
+
+In \texttt{plus/transcript.rs}, Bulletproof+ uses an additional domain separation constant \\
+\verb|bulletproof_plus_transcript|, plus Monero's \texttt{hash\_to\_point} trick, though its necessity is not entirely clear from the code.  
+
+\subsubsection{Security Observations}
+\begin{itemize}
+    \item \emph{Cofactor clearing}: By multiplying all external inputs (\texttt{EdwardsPoint} commitments) by \texttt{INV\_EIGHT} then re-multiplying by 8, the code ensures those points lie in the primary subgroup.  This is critical to avoid torsion-based forgeries. % See https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/original/mod.rs#L61-L62 for INV_EIGHT multiplication and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/batch_verifier.rs#L23-L53 for is_identity check.
+    \item \emph{Batch verification correctness}: Accumulated scalars and points are carefully updated to ensure the final check equals the identity only if all aggregated proofs are valid.  If any proof is malformed, the final multi-exponentiation will yield a non-identity point. % See latter reference above.
+    \item \emph{Randomness and transcript:} The crate depends on externally provided randomness (via \texttt{rand\_core} or through \texttt{OsRng} in tests).  The Fiat--Shamir heuristic is used for non-interactive challenge derivation. % See https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/bulletproofs/src/plus/transcript.rs for Fiat-Shamir.
+\end{itemize}
+
+
+% --------------------------------------------------- %
+\subsection{\texttt{monero-address (v0.1.0)}}
+
+\subsubsection{Purpose}
+
+The \texttt{monero-address} crate provides functionality for handling Monero addresses, including standard, subaddress, integrated, and featured addresses.  It also supports encoding and decoding Monero addresses in Base58Check format.  
+
+\subsubsection{Internal Dependencies}
+
+\begin{itemize}
+    \item \texttt{monero-io (v0.1.0)}.  
+    \item \texttt{monero-primitives (v0.1.0)}.  
+\end{itemize}
+
+\subsubsection{Structure}
+
+A standard library crate, with the corresponding entry point at \path{/wallet/address/src/lib.rs}.  
+
+\begin{itemize}
+    \item \texttt{base58check} module.  
+    \item Tests at \path{/wallet/address/src/tests.rs}.  
+\end{itemize}
+
+\subsubsection{Functionality}
+
+The \texttt{monero-address} crate defines several types of Monero addresses and provides encoding, decoding, and validation functionality.  
+
+\paragraph{Address Types}
+
+The \texttt{monero-address} crate defines the following address types.  
+
+\begin{itemize}
+    \item \textbf{Legacy:} A standard Monero address (public spend and view keys).  
+    \item \textbf{Legacy Integrated:} A legacy address with an embedded 8-byte payment ID.  
+    \item \textbf{Subaddress:} A derived address that allows the receiver to differentiate sources of funds.  
+    \item \textbf{Featured Address:} An extended address format supporting subaddresses, embedded payment IDs, and a guarantee against the burning bug.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L24-L58
+
+Each address type is represented using the \texttt{AddressType} enum, which provides methods for checking whether an address is a subaddress, retrieving its embedded payment ID, and determining if it is guaranteed. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L60-L86
+
+\paragraph{Network Identification}
+
+The \texttt{Network} enum defines three possible Monero network types.  
+
+\begin{itemize}
+    \item \textbf{Mainnet:} The primary Monero blockchain.  
+    \item \textbf{Stagenet:} A staging network with the same rules as mainnet, used for testing.  
+    \item \textbf{Testnet:} A network used to test new features before they are deployed.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L186-L199
+
+Each network is associated with specific address prefix bytes to distinguish them from each other. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L339-L347
+
+\paragraph{Base58Check Encoding and Decoding}
+
+The \texttt{base58check} module implements Base58Check encoding and decoding, ensuring that Monero addresses include a checksum for error detection. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/base58check.rs#L86-L106
+
+\begin{itemize}
+    \item \texttt{encode}: Encodes a byte array into Base58Check format.  
+    \item \texttt{decode}: Decodes a Base58Check string into raw bytes.  
+    \item \texttt{encode\_check}: Computes a checksum and encodes a byte array into Base58Check.  
+    \item \texttt{decode\_check}: Decodes a Base58Check string and verifies its checksum.  
+\end{itemize}
+
+\paragraph{Address Parsing and Generation}
+
+Monero addresses can be created from public spend and view keys, or parsed from strings. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L401-L461
+
+\begin{itemize}
+    \item \texttt{MoneroAddress::new}: Creates a new Monero address given a network, address type, and key pair.  
+    \item \texttt{MoneroAddress::from\_str}: Parses an address string for a given network.  
+    \item \texttt{MoneroAddress::from\_str\_with\_unchecked\_network}: Parses an address string without verifying the network.  
+    \item \texttt{MoneroAddress::to\_string}: Serializes an address to a Base58Check-encoded string.  
+\end{itemize}
+
+\paragraph{Address Validation}
+
+The crate ensures that parsed addresses meet the expected format. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L419-L440
+
+\begin{itemize}
+    \item \textbf{Length validation:} Ensures addresses are the correct length based on their type.  
+    \item \textbf{Checksum verification:} Ensures that decoded addresses pass the Base58Check validation.  
+    \item \textbf{Key validation:} Ensures that the spend and view keys are valid Edwards25519 points.  
+\end{itemize}
+
+\subsubsection{Serialization Details}
+
+The \texttt{monero-address} crate serializes addresses into a compact binary format before encoding them into Base58Check.  The serialization structure is as follows. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L381-L399
+
+\begin{enumerate}
+    \item \textbf{Network Byte:} A single byte indicating the network and address type.
+    \item \textbf{Spend Key:} A 32-byte compressed Edwards25519 public key.
+    \item \textbf{View Key:} A 32-byte compressed Edwards25519 public key.
+    \item \textbf{Optional Fields:}
+    \begin{itemize}
+        \item \textbf{Integrated Payment ID:} An 8-byte payment ID (only for integrated addresses).
+        \item \textbf{Feature Flags:} A variable-length integer encoding subaddress, payment ID, and guarantee status.
+    \end{itemize}
+    \item \textbf{Checksum:} A 4-byte Keccak-256 hash of the serialized data.
+\end{enumerate}
+% See https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/lib.rs#L381-L399 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/base58check.rs#L86-L91 for checksum details.
+
+\subsubsection{Testing}
+
+The \texttt{monero-address} crate includes comprehensive tests to validate the correctness of its encoding, decoding, and parsing functions. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/wallet/address/src/tests.rs
+
+\begin{itemize}
+    \item \textbf{Base58Check Encoding Tests:} Ensures that encoded addresses correctly round-trip through decoding.  
+    \item \textbf{Standard Address Tests:} Validates correct parsing and serialization of standard Monero addresses.  
+    \item \textbf{Integrated Address Tests:} Ensures proper handling of embedded payment IDs.  
+    \item \textbf{Subaddress Tests:} Validates the ability to generate and recognize subaddresses.  
+    \item \textbf{Featured Address Tests:} Ensures correct parsing and serialization of extended features.  
+    \item \textbf{Vector-Based Tests:} Uses predefined address vectors to ensure consistency with expected values.  
+\end{itemize}
+
+The test suite ensures that all address types are handled correctly and provides coverage for both expected and edge cases.  
+
+
+% --------------------------------------- %
+\subsection{monero-clsag (v0.1.0)}
+The \texttt{monero-clsag} crate implements Compact Linkable Spontaneous Anonymous Group (CLSAG) signatures and provides a FROST-inspired threshold signing mechanism.  
+The implementation consists of two main components:
+
+\subsubsection{Core CLSAG Implementation}
+\begin{description}
+\item[ClsagContext] \hfill  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/lib.rs#L65-L72
+
+Holds the context needed for signing:
+\begin{itemize}
+\item A commitment opening (mask and amount)
+\item Selected decoy positions and ring
+\end{itemize}
+
+\item[Clsag Signature] \hfill % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/lib.rs#L222-L231
+
+A signature consisting of:
+\begin{itemize}
+\item D: Difference of commitment randomness scaling the key image generator
+\item s: Vector of responses for each ring member
+\item c1: First challenge in the ring
+\end{itemize}
+
+\item[Core Algorithm] \hfill  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/lib.rs#L96-L220
+
+The core signing/verification algorithm:
+\begin{enumerate}
+\item Takes ring members, key image I, pseudo-out P, and message m
+\item For signing:
+  \begin{itemize}
+  \item Generates random nonces for the real signer
+  \item Computes the key image generator from the public key
+  \item Calculates initial commitments A and AH
+  \end{itemize}
+\item For both signing and verifying:
+  \begin{itemize}
+  \item Computes challenges using Keccak256
+  \item Performs ring calculations over the Ed25519 group
+  \item Validates signature components
+  \end{itemize}
+\end{enumerate}
+\end{description}
+
+\subsubsection{FROST-Inspired Threshold Signing}
+\begin{description}
+\item[ClsagMultisig] \hfill % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/multisig.rs#L115-L137
+
+Implements threshold signing for CLSAG:
+\begin{itemize}
+\item Uses FROST key generation and coordination
+\item Extends CLSAG to support threshold key images
+\item Preserves CLSAG's linkability property
+\end{itemize}
+
+\item[Key Components] \hfill  % See https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/multisig.rs#L57-L68 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/multisig.rs#L86-L97
+\begin{itemize}
+\item \textbf{ClsagMultisigMaskSender}: A channel for communicating commitment masks.  
+\item \textbf{ClsagAddendum}: Key image shares produced during signing.  
+\item \textbf{Interim}: Stores partial signature data during the protocol.  
+\end{itemize}
+
+\item[Protocol Flow] \hfill  % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/multisig.rs#L172-L245
+\begin{enumerate}
+\item Initialize with a transcript and CLSAG context
+\item Share and aggregate key image contributions
+\item Generate and share nonces via FROST
+\item Produce partial signatures
+\item Verify shares and construct the final signature
+\end{enumerate}
+
+\item[Security Properties]  \hfill % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/clsag/src/multisig.rs#L315-L378
+
+\begin{itemize}
+\item Maintains unforgeability of CLSAG
+\item Preserves one-time key image property
+\item Requires a threshold of signers to complete
+\item Uses transcript-based challenge generation
+\end{itemize}
+\end{description}
+
+The implementation leverages the \texttt{curve25519-dalek} library for Ed25519 operations and includes comprehensive test vectors covering both single-signer and threshold signing scenarios.  
+All operations maintain constant-time properties to prevent timing side-channels.  
+
+
+% -------------------------------------- %
+\subsection{monero-simple-request-rpc (v0.1.0)}
+
+\paragraph{Purpose}
+The \texttt{monero-simple-request-rpc} crate provides an HTTP(S)-based transport layer for performing RPC calls to a Monero daemon.  This crate is designed to be minimal and efficient, avoiding dependencies on larger libraries like \texttt{reqwest}, while supporting both authenticated and unauthenticated connections.  The crate implements the \texttt{Rpc} trait from the \texttt{monero-rpc} crate.
+
+\paragraph{Internal Dependencies}
+\begin{itemize}
+    \item \texttt{monero-rpc (v0.1.0)}: Provides the \texttt{Rpc} trait and associated error types.  
+    \item \texttt{simple-request}: Handles HTTP(S) request and response processing.  
+    \item \texttt{digest-auth}: Implements HTTP Digest Authentication for authenticated connections.  
+    \item \texttt{tokio}: Used for asynchronous operations and synchronization primitives.  
+    \item \texttt{hex}: Used for encoding and decoding hexadecimal data.
+\end{itemize}
+
+\paragraph{Structure}
+The crate is a standard library crate with its entry point at \path{/rpc/simple-request/src/lib.rs}.  The main component is the \texttt{SimpleRequestRpc} struct, which encapsulates the connection logic, authentication handling, and request processing.  The implementation includes:
+\begin{itemize}
+    \item \textbf{Authentication Handling}: Supports both authenticated and unauthenticated RPC connections.  Authentication uses HTTP Digest Authentication when credentials are provided in the URL. % See Authentication enum at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L20-L33
+    \item \textbf{Thread Safety}: Uses \texttt{Arc<Mutex>} for safe concurrent access to authentication state and nonce management. % See Arc<Mutex> usage at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L27-L32
+    \item \textbf{Request Processing}: Sends RPC requests and processes responses, including retries for stale authentication challenges. % See inner_post in https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L130-L280
+    \item \textbf{Timeout Management}: Allows for customizable request timeouts, defaulting to 30 seconds. % See declaration at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L18 and usage in https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L62-L77 and after https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L129
+\end{itemize}
+% See Struct at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L35-L43 and implementation at https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L45-L127
+
+\paragraph{Detailed Functionality}
+\begin{description}
+    \item[\texttt{SimpleRequestRpc::new}]  
+    Creates a new \texttt{SimpleRequestRpc} instance with a default timeout of 30 seconds.  If the provided URL contains credentials, they are parsed and used for Digest Authentication. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L62-L68
+
+    \item[\texttt{SimpleRequestRpc::with\_custom\_timeout}]  
+    Similar to \texttt{new}, but allows specifying a custom timeout duration.  It parses the URL for authentication details and initializes the appropriate client. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L70-L126
+
+    \item[\texttt{SimpleRequestRpc::post}]  
+    Implements the \texttt{post} method from the \texttt{Rpc} trait.  It sends a POST request to the specified RPC route with the provided payload, handling retries for authentication failures due to stale challenges. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L283-L293
+
+    \item[\texttt{SimpleRequestRpc::inner\_post}]  
+    An internal method that performs the actual request logic.  It handles both authenticated and unauthenticated requests and processes the response to extract the body or detect errors. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L130-L135
+
+    \item[\texttt{SimpleRequestRpc::digest\_auth\_challenge}]  
+    Extracts and parses the \texttt{WWW-Authenticate} header from the server response to initialize or update the Digest Authentication state. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L46-L60
+
+    \item[\texttt{Authentication Retry Logic}]  
+    Implements a two-attempt retry mechanism for authentication failures, with specific handling for stale nonces and connection errors.  This retry logic is important for maintaining connection stability during authentication state changes. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/src/lib.rs#L253-L275
+\end{description}
+
+\paragraph{Authentication State Management}
+The authentication state is managed through an internal \texttt{Authentication} enum with two variants:
+\begin{itemize}
+    \item \texttt{Unauthenticated}: Contains a single \texttt{Client} instance for all requests.  
+    \item \texttt{Authenticated}: Contains a username, password, and a thread-safe connection state managed through \texttt{Arc<Mutex<(Option<(WwwAuthenticateHeader, u64)>, Client)>>}.
+\end{itemize}
+
+\paragraph{Testing}
+Integration tests are located in \path{/rpc/simple-request/tests/tests.rs}.  These tests validate:
+\begin{itemize}
+    \item RPC functionality for retrieving blockchain height, blocks, and hardfork versions.  
+    \item Block generation with different amounts of blocks (1 and 5).  
+    \item Authentication handling for valid and stale challenges.  
+    \item Decoy RPC functionality and output distribution queries.  
+    \item Sequential test execution using \texttt{LazyLock<Mutex<()>>} to prevent test interference.  
+    \item Error handling for various failure scenarios.
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/rpc/simple-request/tests/tests.rs#L16-L65
+
+\paragraph{Error Handling}
+The implementation provides comprehensive error handling for:
+\begin{itemize}
+    \item Connection failures with detailed error messages.  
+    \item Authentication failures, including stale nonce detection.  
+    \item Invalid or malformed responses.  
+    \item Timeout errors with a configurable duration.  
+    \item URL parsing and validation errors.
+\end{itemize}
+
+\paragraph{Summary}
+The \texttt{monero-simple-request-rpc} crate is a lightweight, efficient solution for connecting to a Monero daemon via HTTP(S).  It adheres to the \texttt{Rpc} trait interface, enabling seamless integration with the broader \texttt{monero-rpc} ecosystem.  Its design prioritizes thread safety, robust authentication handling, and comprehensive error management, making it suitable for both development and production use cases.
+
+
+
+% --------------------------------------------- %
+\subsection{\texttt{monero-borromean (v0.1.0)}}
+\label{sec:monero_borromean}
+
+This crate provides a Borromean ring signature--based approach to a 64-bit range proof within the Monero protocol. It defines two primary types:
+
+\begin{itemize}
+  \item \texttt{BorromeanSignatures} % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L18-L28
+  \item \texttt{BorromeanRange} % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L74-L79
+\end{itemize}
+
+Both types are specialized to operate with 64-bit range proofs and rely on Curve25519-based group operations to construct and verify Borromean ring signatures.
+
+\paragraph{Data Structures.}
+\begin{itemize}
+  \item \texttt{BorromeanSignatures}
+  \begin{itemize}
+    \item Stores exactly 64 Borromean ring signatures in two arrays of scalars, \texttt{s0} and \texttt{s1}, each of length 64.
+    \item Holds the final challenge scalar \texttt{ee}.
+    \item Implements custom \texttt{read} and \texttt{write} methods using the \texttt{monero-io} crate to produce or consume canonical byte encodings. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L31-L49
+    \item Its \texttt{verify} function checks correctness by: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L51-L72
+      \begin{enumerate}[label=(\alph*)]
+        \item Performing an iterative double-scalar multiplication on each signature component. % See section referenced above, especially https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L56-L60 and https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L62-L66
+        \item Accumulating hash outputs in a transcript. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L67
+        \item Ensuring the final hash matches \texttt{ee}. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L70
+      \end{enumerate}
+  \end{itemize}
+
+  \item \texttt{BorromeanRange} % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L74-L79
+  \begin{itemize}
+    \item Contains a \texttt{BorromeanSignatures} field and 64 \texttt{bit\_commitments}, each an \texttt{EdwardsPoint}.
+    \item Like \texttt{BorromeanSignatures}, it has \texttt{read} and \texttt{write} functions for serialized I/O. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L82-L94
+    \item Its \texttt{verify} method checks that: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L96-L111
+      \begin{enumerate}[label=(\alph*)]
+        \item The sum of all \texttt{bit\_commitments} equals the provided \texttt{commitment}. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L99-L101
+        \item For each bit, subtracting \(\texttt{H\_pow\_2}[i]\) from \texttt{bit\_commitments}[i] produces a second set of points. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L103-L108
+        \item The embedded \texttt{BorromeanSignatures} correctly verifies under those two sets of points. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L110
+      \end{enumerate}
+  \end{itemize}
+\end{itemize}
+
+\paragraph{Purpose and Scope.} 
+This crate provides an older, yet still relevant, Monero-based range proof system.  While newer systems like Bulletproofs have largely supplanted Borromean proofs in many contexts, the \texttt{monero-borromean} crate is crucial for maintaining backwards compatibility with legacy proofs and for verifying archived transactions that used Borromean range proofs. It accepts both \texttt{std} and \texttt{no\_std} environments, and depends on a few of the core Monero crates:
+\begin{itemize}
+  \item \texttt{monero-io} for reading and writing typed data.
+  \item \texttt{monero-generators} for fixed-base scalar multiplication with \(H^2\).
+  \item \texttt{monero-primitives} for cryptographic primitives such as \texttt{UnreducedScalar}.
+\end{itemize}
+
+\paragraph{Verification Logic.}
+\begin{enumerate}[label=(\roman*)]
+  \item \texttt{BorromeanSignatures::verify} loops over 64 “bits” (i.e., the separate ring signatures). For each bit: % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L51-L72
+  \begin{itemize}
+    \item It checks the challenge scalar by computing intermediate elliptic-curve multiplications. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L56-L59
+    \item It accumulates partial results into a 2048-byte transcript. Z% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L67
+  \end{itemize}
+  \item Finally, if the scalar derived from hashing the transcript matches the stored scalar \texttt{ee}, the signature is valid % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/borromean/src/lib.rs#L70
+\end{enumerate}
+
+\paragraph{Conclusion.} 
+The \texttt{monero-borromean (v0.1.0)} crate implements older-style Borromean range proofs used historically in Monero transactions.  It is straightforward, cleanly implemented, line 3 enforces \texttt{missing\_docs} denial to encourage thorough documentation and offers \texttt{no\_std} support.  Its modular APIs for reading, writing, and verifying signatures make it an easy integration point for other projects that might require Borromean signature functionality or need to validate historical transactions.
+
+
+
+
+% --------------------------------------- %
+\subsection{monero-mlsag (v0.1.0)}
+
+The \texttt{monero-mlsag} crate provides functionality for Multilayered Linkable Spontaneous Anonymous Group (MLSAG) signatures as used in the Monero protocol.  
+The crate is organized around two primary data structures: \texttt{RingMatrix} and \texttt{Mlsag}.
+
+\subsubsection{Ring Matrix}
+
+\begin{description}
+\item[Structure] \hfill 
+
+The \texttt{RingMatrix} type encapsulates a matrix of Edwards points used for MLSAG verification:  
+\begin{itemize}
+\item Internal representation: \texttt{Vec<Vec<EdwardsPoint>>}.  
+\item Zeroizes on drop for security.  
+\item Must contain at least 2 ring members.  
+\item All members must have equal length.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L42-L46
+
+\item[Construction Methods] \hfill 
+\begin{enumerate}
+\item \texttt{new}: Creates a ring matrix from a pre-formatted vector of vectors.  
+  \begin{itemize}
+  \item Validates matrix dimensions.  
+  \item Ensures minimum ring size of 2.  
+  \item Ensures consistent member lengths.  
+  \end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L49-L64
+
+\item \texttt{individual}: Constructs a ring matrix for single output verification.  
+  \begin{itemize}
+  \item Takes a ring of \texttt{[EdwardsPoint; 2]} arrays.  
+  \item Takes a pseudo-output point.  
+  \item Subtracts the pseudo-output from the second column.  
+  \end{itemize}
+\end{enumerate}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L66-L76
+
+\item[Utilities] \hfill 
+\begin{itemize}
+\item \texttt{members()}: Returns the count of ring members. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L83-L86
+\item \texttt{member\_len()}: Returns the length of each member vector. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L83-L86
+\item \texttt{iter()}: Provides an iterator over matrix members as slices. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L78-L81
+\end{itemize}
+\end{description}
+
+\subsubsection{MLSAG Signature}
+
+\begin{description}
+\item[Structure] \hfill 
+
+The \texttt{Mlsag} type represents a complete MLSAG signature:
+\begin{itemize}
+\item \texttt{ss}: A matrix of response scalars (\texttt{Vec<Vec<Scalar>>}).  
+\item \texttt{cc}: A challenge scalar.  
+\item Implements zeroization for security.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L98-L103
+
+\item[Serialization] \hfill
+
+Provides binary serialization methods.  
+\begin{itemize}
+\item \texttt{write}: Serializes to a writer. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L106-L112
+  \begin{itemize}
+  \item Writes the \texttt{ss} matrix elements.  
+  \item Writes the \texttt{cc} challenge.  
+  \end{itemize}
+\item \texttt{read}: Deserializes from a reader. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L114-L122
+  \begin{itemize}
+  \item Takes the expected mixin count.  
+  \item Takes the expected width of the \texttt{ss} matrix.  
+  \item Reconstructs the signature structure.  
+  \end{itemize}
+\end{itemize}
+
+\item[Verification] \hfill 
+
+The \texttt{verify} method validates an MLSAG signature.  
+\begin{enumerate}
+\item Input validation.  
+  \begin{itemize}
+  \item Validates that the key image count matches the ring member length minus 1.  
+  \item Ensures consistent matrix dimensions.  
+  \item Validates key image properties (non-identity, torsion-free).  
+  \end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L124-L186
+
+\item Challenge reconstruction.  
+  \begin{itemize}
+  \item Maintains a message buffer for hash computation. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L137
+  \item Iterates through ring members and key images. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L150-L179
+  \item Computes \(L = sG + (c_i \times P)\) for each entry. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L157
+  \item For linkable layers, computes \(R = s \times \mathrm{Hp}(P) + (c_i \times I)\). % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L171
+  \item Updates the challenge using Keccak256. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L176
+  \end{itemize}
+
+\item Final verification.  
+  \begin{itemize}
+  \item Checks that the reconstructed challenge matches the signature. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L181-L184
+  \item Returns a \texttt{Result} indicating validity.  
+  \end{itemize}
+\end{enumerate}
+\end{description}
+
+\subsubsection{Aggregate Ring Matrix Builder}
+
+\begin{description}
+\item[Purpose] \hfill
+
+The \texttt{AggregateRingMatrixBuilder} facilitates the construction of ring matrices for aggregate signatures.  
+\begin{itemize}
+\item Manages key ring vectors.  
+\item Tracks amount commitments.  
+\item Handles pseudo-output calculations.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L188-L196
+
+\item[Construction] \hfill 
+
+Created with transaction outputs and a fee. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L199-L208
+\begin{itemize}
+\item Takes a slice of output commitment points.  
+\item Takes the fee amount as a \texttt{u64}.  
+\item Computes the initial sum of outputs. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L206
+\end{itemize}
+
+\item[Ring Addition] \hfill 
+
+The \texttt{push\_ring} method builds the matrix incrementally. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L210-L229
+\begin{itemize}
+\item Validates ring dimensions.  
+\item Separates key and amount components.  
+\item Updates running sums.  
+\end{itemize}
+
+\item[Finalization] \hfill 
+
+The \texttt{build} method produces the final \texttt{RingMatrix}. % https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L231-L237
+\begin{itemize}
+\item Combines key and amount components.  
+\item Validates the final matrix structure.  
+\item Returns the complete ring matrix.  
+\end{itemize}
+\end{description}
+
+\subsubsection{Error Handling}
+
+The crate defines the \texttt{MlsagError} enum for various failure modes.  
+\begin{itemize}
+\item \texttt{InvalidRing}: Ring size or structure issues.  
+\item \texttt{InvalidAmountOfKeyImages}: Incorrect key image count.  
+\item \texttt{InvalidSs}: Response matrix dimension mismatch.  
+\item \texttt{InvalidKeyImage}: Invalid key image properties.  
+\item \texttt{InvalidCi}: Challenge verification failure.  
+\end{itemize}
+% https://github.com/serai-dex/serai/blob/48db06f901952b24bb38d7c7e256f798f08512cd/networks/monero/ringct/mlsag/src/lib.rs#L21-L40
+
+
+
+
